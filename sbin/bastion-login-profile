@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-login-profile"
+
+PROFILE_DST="/etc/profile.d/bastion-login.sh"
+ADMIN_GROUP="k8s-admin"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+# --------------------------------------------------
+# Usage
+# --------------------------------------------------
+
+usage() {
+  cat <<EOF
+Usage:
+  bastion-login-profile --init --user-tools FILE --admin-tools FILE
+  bastion-login-profile --reload --user-tools FILE --admin-tools FILE
+
+Options:
+  --init      Generate profile (first time)
+  --reload    Regenerate profile
+  --user-tools FILE   Flat file with user tools
+  --admin-tools FILE  Flat file with admin tools
+EOF
+}
+
+# --------------------------------------------------
+# Args
+# --------------------------------------------------
+
+ACTION=""
+USER_TOOLS=""
+ADMIN_TOOLS=""
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --init)
+        ACTION="init"
+        shift
+        ;;
+      --reload)
+        ACTION="reload"
+        shift
+        ;;
+      --user-tools)
+        USER_TOOLS="$2"
+        shift 2
+        ;;
+      --admin-tools)
+        ADMIN_TOOLS="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$ACTION" ]] || die "--init or --reload required"
+  [[ -n "$USER_TOOLS" ]] || die "--user-tools required"
+  [[ -n "$ADMIN_TOOLS" ]] || die "--admin-tools required"
+}
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+read_tools() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  grep -vE '^\s*(#|$)' "$file" | tr '\n' ' '
+}
+
+generate_profile() {
+  local user_file="$1"
+  local admin_file="$2"
+
+  local user_tools admin_tools
+  user_tools="$(read_tools "$user_file")"
+  admin_tools="$(read_tools "$admin_file")"
+
+  local tmp
+  tmp="$(mktemp)"
+
+  cat >"$tmp" <<EOF
+# Managed by bastion-login-profile
+# Generated on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+BASTION_USER_TOOLS="$user_tools"
+BASTION_ADMIN_TOOLS="$admin_tools"
+BASTION_ADMIN_GROUP="$ADMIN_GROUP"
+
+_bastion_has_group() {
+  id -nG "\$USER" 2>/dev/null | tr ' ' '\\n' | grep -qx "\$1"
+}
+
+_bastion_tools() {
+  local tools="\$BASTION_USER_TOOLS"
+  if _bastion_has_group "\$BASTION_ADMIN_GROUP"; then
+    tools="\$tools \$BASTION_ADMIN_TOOLS"
+  fi
+  echo "\$tools"
+}
+
+_bastion_kube_status() {
+  local kube_dir="\$HOME/.kube"
+  local config="\$kube_dir/config"
+  local bootstrap="\$kube_dir/bootstrap"
+
+  if [[ -f "\$config" ]]; then
+    echo "Using kubeconfig: \$config"
+    /usr/local/sbin/bastion-kubeconfig-expiry "\$kube_dir" 2>/dev/null || true
+  elif [[ -f "\$bootstrap" ]]; then
+    echo "Using bootstrap kubeconfig: \$bootstrap"
+    echo "Certificate not issued."
+    echo "Run: bastion-kube-renew"
+  else
+    echo "No kubeconfig found in \$kube_dir"
+  fi
+}
+
+case \$- in *i*)
+  if [[ -n "\${SSH_CONNECTION:-}" ]] && [[ -z "\${BASTION_NOTICE_SHOWN:-}" ]]; then
+    export BASTION_NOTICE_SHOWN=1
+
+    _b=\$(tput bold 2>/dev/null || true)
+    _n=\$(tput sgr0 2>/dev/null || true)
+
+    echo >&2
+    echo "\${_b}============================================================\${_n}" >&2
+    echo "\${_b} Kubernetes Bastion Access\${_n}" >&2
+    echo "------------------------------------------------------------" >&2
+
+    _bastion_kube_status >&2
+    echo >&2
+    echo "Groups:" >&2
+    id -nG | tr ' ' '\\n' | grep '^k8s-' >&2 || true
+    echo >&2
+    echo "Available tools:" >&2
+    _bastion_tools >&2
+
+    echo "\${_b}============================================================\${_n}" >&2
+    echo >&2
+
+    unset _b _n
+  fi
+esac
+
+unset -f _bastion_has_group _bastion_kube_status _bastion_tools
+EOF
+
+  echo "$tmp"
+}
+
+install_if_changed() {
+  local src="$1"
+
+  if [[ -f "$PROFILE_DST" ]] && cmp -s "$src" "$PROFILE_DST"; then
+    log_info "Profile already up to date."
+    return 1
+  fi
+
+  install -m 0644 "$src" "$PROFILE_DST"
+  log_info "Installed $PROFILE_DST"
+}
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+
+main() {
+  require_root
+
+  need_cmd install
+  need_cmd grep
+  need_cmd tr
+  need_cmd cmp
+  need_cmd mktemp
+
+  parse_args "$@"
+
+  log_info "Generating login profile"
+  log_debug "USER_TOOLS=$USER_TOOLS"
+  log_debug "ADMIN_TOOLS=$ADMIN_TOOLS"
+
+  local tmp
+  tmp="$(generate_profile "$USER_TOOLS" "$ADMIN_TOOLS")"
+
+  install_if_changed "$tmp" || true
+  rm -f "$tmp"
+
+  log_info "Done."
+}
+
+main "$@"

@@ -1,0 +1,9 @@
+# Test environment - defines test users
+users:
+  alice:
+    ensureGroups:
+      - k8s-test-group
+  
+  bob:
+    ensureGroups:
+      - k8s-test-group

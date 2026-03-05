@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-install-containerd"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Installed (preferred)
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  # Legacy installed
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  # Repo/bootstrap layout (../lib contains log.sh)
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  # Container-mounted repo
+  [[ -f /bastion/lib/log.sh ]] && { echo /bastion/lib; return; }
+
+  echo "ERROR: bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/args.sh"
+source "${LIB_DIR}/system.sh"
+
+parse_common_args "$@"
+
+BIN_DIR="$TOOLS_DIR"
+
+# --------------------------------------------------
+# Version detection
+# --------------------------------------------------
+
+tar_containerd_version() {
+  local f
+  f="$(ls -1 ${BIN_DIR}/containerd-*.tar.gz | head -n1)"
+  basename "$f" | sed -E 's/^containerd-([0-9]+\.[0-9]+\.[0-9]+).*/\1/'
+}
+
+installed_containerd_version() {
+  command -v /usr/local/bin/containerd >/dev/null 2>&1 \
+    && /usr/local/bin/containerd --version | awk '{print $3}' | sed 's/^v//' \
+    || true
+}
+
+local_runc_version() {
+  local f
+  f="$(ls -1 ${BIN_DIR}/runc.* | head -n1)"
+  chmod +x "$f"
+  "$f" --version | head -n1 | awk '{print $3}' | sed 's/^v//'
+}
+
+installed_runc_version() {
+  command -v /usr/local/sbin/runc >/dev/null 2>&1 \
+    && /usr/local/sbin/runc --version | head -n1 | awk '{print $3}' | sed 's/^v//' \
+    || true
+}
+
+# --------------------------------------------------
+
+install_dependencies() {
+  log_info "Installing OS dependencies..."
+  # curl-minimal is present on many Rocky/RHEL images; installing full curl can conflict.
+  dnf install -y iproute iptables tar gzip curl-minimal >/dev/null
+}
+
+check_artifacts() {
+  log_info "Checking required artifacts..."
+  ls ${BIN_DIR}/containerd-*.tar.gz >/dev/null
+  ls ${BIN_DIR}/runc.* >/dev/null
+  ls ${BIN_DIR}/cni-plugins-linux-*.tgz >/dev/null
+}
+
+install_containerd_if_needed() {
+  local want have
+  want="$(tar_containerd_version)"
+  have="$(installed_containerd_version)"
+
+  [[ -n "$have" && "$have" == "$want" ]] && {
+    log_info "containerd already installed (v$have)"
+    return 1
+  }
+
+  log_info "Installing containerd v$want"
+  tar Cxzvf /usr/local ${BIN_DIR}/containerd-*.tar.gz
+}
+
+install_runc_if_needed() {
+  local want have
+  want="$(local_runc_version)"
+  have="$(installed_runc_version)"
+
+  [[ -n "$have" && "$have" == "$want" ]] && {
+    log_info "runc already installed (v$have)"
+    return 1
+  }
+
+  log_info "Installing runc v$want"
+  install -m 755 ${BIN_DIR}/runc.* /usr/local/sbin/runc
+}
+
+install_cni_if_needed() {
+  [[ -x /opt/cni/bin/bridge ]] && {
+    log_info "CNI plugins already installed"
+    return 1
+  }
+
+  log_info "Installing CNI plugins"
+  mkdir -p /opt/cni/bin
+  tar Cxzvf /opt/cni/bin ${BIN_DIR}/cni-plugins-linux-*.tgz
+}
+
+configure_containerd() {
+  local changed=0
+  log_info "Configuring containerd"
+
+  mkdir -p /etc/containerd
+
+  if [[ ! -f /etc/containerd/config.toml ]]; then
+    /usr/local/bin/containerd config default > /etc/containerd/config.toml
+    changed=1
+  fi
+
+  if ! grep -Eq '^\s*SystemdCgroup\s*=\s*true\s*$' /etc/containerd/config.toml; then
+    sed -i -E 's/^\s*SystemdCgroup\s*=.*/SystemdCgroup = true/' \
+      /etc/containerd/config.toml || \
+      echo "SystemdCgroup = true" >> /etc/containerd/config.toml
+    changed=1
+  fi
+
+  return $changed
+}
+
+install_systemd_service() {
+  log_info "Installing systemd service"
+
+  cat >/etc/systemd/system/containerd.service <<'EOF'
+[Unit]
+Description=containerd container runtime
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/containerd
+Restart=always
+Delegate=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+reload_and_start() {
+  log_info "Reloading systemd + starting containerd"
+  reload_systemd
+  systemctl enable --now containerd
+}
+
+restart_if_needed() {
+  [[ "$1" == "1" ]] && {
+    log_info "Restarting containerd"
+    systemctl restart containerd
+  } || log_info "No restart needed"
+}
+
+validate() {
+  log_info "Validating installation"
+  /usr/local/bin/containerd --version
+
+  # containerd may take a moment to create its socket after systemd starts it.
+  systemctl --no-pager is-active containerd >/dev/null
+
+  local i
+  for i in $(seq 1 20); do
+    [[ -S /run/containerd/containerd.sock ]] && break
+    sleep 0.5
+  done
+
+  /usr/local/bin/ctr version
+  systemctl --no-pager is-active containerd
+}
+
+main() {
+  require_root
+
+  need_cmd dnf
+  need_cmd tar
+  need_cmd sed
+  need_cmd grep
+
+  check_artifacts
+  install_dependencies
+
+  local changed=0
+
+  install_containerd_if_needed && changed=1 || true
+  install_runc_if_needed && changed=1 || true
+  install_cni_if_needed && changed=1 || true
+  configure_containerd && changed=1 || true
+
+  install_systemd_service
+  reload_and_start
+  restart_if_needed "$changed"
+
+  validate
+  log_info "containerd installation complete"
+}
+
+main "$@"

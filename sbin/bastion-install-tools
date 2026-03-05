@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-install-tools"
+DEST_BIN="/usr/local/bin"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Installed (preferred)
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo "/usr/local/lib/bastion"; return; }
+  # Legacy installed
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo "/usr/lib/bastion"; return; }
+  # Repo/bootstrap layout (../lib contains log.sh)
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  # Container-mounted repo
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "ERROR: bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+# shellcheck source=/usr/local/lib/bastion/common.sh
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/args.sh"
+
+# --------------------------------------------------
+# Usage
+# --------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bastion-install-tools [--base-dir DIR] [--tools-dir DIR] [--dest-bin DIR]
+EOF
+}
+
+install_os_deps() {
+  command -v dnf >/dev/null 2>&1 || return 0
+  log_info "Installing OS dependencies..."
+  dnf install -y tar gzip file findutils >/dev/null
+}
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+sha256() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+install_binary_if_changed() {
+  local src="$1"
+  local name dst
+  name="${2:-$(basename "$src")}"
+  dst="${DEST_BIN}/${name}"
+
+  chmod +x "$src"
+
+  if [[ -f "$dst" ]]; then
+    local src_sum dst_sum
+    src_sum="$(sha256 "$src")"
+    dst_sum="$(sha256 "$dst")"
+
+    if [[ "$src_sum" == "$dst_sum" ]]; then
+      log_info "$name unchanged — skipping."
+      return 1
+    fi
+  fi
+
+  log_info "Installing $name → $DEST_BIN"
+  install -m 0755 "$src" "$dst"
+}
+
+# --------------------------------------------------
+# Cleanup
+# --------------------------------------------------
+
+cleanup_tmpdirs=()
+
+cleanup() {
+  for d in "${cleanup_tmpdirs[@]:-}"; do
+    if [[ -d "$d" ]]; then
+      rm -rf "$d"
+    fi
+  done
+
+  return 0
+}
+trap cleanup EXIT
+
+# --------------------------------------------------
+# Extraction
+# --------------------------------------------------
+
+extract_archive() {
+  local archive="$1"
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  cleanup_tmpdirs+=("$tmpdir")
+
+  tar -xf "$archive" -C "$tmpdir"
+  echo "$tmpdir"
+}
+
+find_binaries() {
+  local dir="$1"
+
+  find "$dir" -type f \
+    ! -iname "*.md" \
+    ! -iname "LICENSE*" \
+    ! -iname "README*" \
+    ! -iname "*.txt" \
+    ! -iname "*.sig" \
+    ! -iname "*.sha*" \
+    -exec file {} \; |
+    grep -E "executable|ELF" |
+    cut -d: -f1
+}
+
+# --------------------------------------------------
+# Installers
+# --------------------------------------------------
+
+install_raw_binary() {
+  local pattern="$1"
+
+  for f in ${TOOLS_DIR}/${pattern}; do
+    [[ -f "$f" ]] || continue
+    install_binary_if_changed "$f" || true
+  done
+}
+
+install_raw_binary_as() {
+  local pattern="$1" name="$2"
+
+  for f in ${TOOLS_DIR}/${pattern}; do
+    [[ -f "$f" ]] || continue
+    install_binary_if_changed "$f" "$name" || true
+    return 0
+  done
+
+  log_warn "No files matched in $TOOLS_DIR ($pattern)"
+  return 0
+}
+
+install_archive_binaries() {
+  local pattern="$1"
+  local filter="${2:-}"
+
+  for archive in ${TOOLS_DIR}/${pattern}; do
+    [[ -f "$archive" ]] || continue
+
+    log_info "Processing archive $(basename "$archive")"
+    tmpdir="$(extract_archive "$archive")"
+
+    while read -r bin; do
+      [[ -z "$bin" ]] && continue
+      base="$(basename "$bin")"
+
+      if [[ -n "$filter" && ! "$base" =~ $filter ]]; then
+        continue
+      fi
+
+      install_binary_if_changed "$bin" || true
+    done < <(find_binaries "$tmpdir")
+
+    rm -rf "$tmpdir"
+  done
+}
+
+# --------------------------------------------------
+# Tool groups
+# --------------------------------------------------
+
+install_etcd_tools() {
+  log_info "Installing etcd tools..."
+  install_archive_binaries "etcd-*.tar.gz"
+}
+
+install_helm() {
+  log_info "Installing helm..."
+  install_archive_binaries "helm-*.tar.gz" "^helm$"
+}
+
+install_nerdctl() {
+  log_info "Installing nerdctl..."
+  install_archive_binaries "nerdctl-*.tar.gz" "^nerdctl$"
+}
+
+install_k9s() {
+  log_info "Installing k9s..."
+  install_archive_binaries "k9s*.tar.gz"
+}
+
+install_stern() {
+  log_info "Installing stern..."
+  install_archive_binaries "stern*.tar.gz"
+}
+
+install_go_containerregistry() {
+  log_info "Installing crane/gcrane/krane..."
+  install_archive_binaries "go-containerregistry*.tar.gz"
+}
+
+install_single_binaries() {
+  log_info "Installing standalone binaries..."
+
+  install_raw_binary "kubectl"
+  install_raw_binary_as "jq-*" "jq"
+  install_raw_binary_as "yq_*" "yq"
+  install_raw_binary_as "skopeo-*" "skopeo"
+  install_raw_binary_as "regctl-*" "regctl"
+}
+
+# --------------------------------------------------
+# Validation
+# --------------------------------------------------
+
+validate() {
+  log_info "Validating installed tools..."
+
+  local tools=(
+    kubectl helm nerdctl k9s stern jq yq
+    skopeo regctl crane gcrane krane
+    etcdctl etcdutl
+  )
+
+  for t in "${tools[@]}"; do
+    if command -v "$t" >/dev/null 2>&1; then
+      log_info "OK: $t"
+    else
+      log_warn "Not found: $t"
+    fi
+  done
+}
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+
+main() {
+  parse_common_args "$@"
+
+  require_root
+
+  install_os_deps
+
+  need_cmd tar
+  need_cmd sha256sum
+  need_cmd file
+  need_cmd install
+  need_cmd find
+  need_cmd grep
+
+  [[ -d "$TOOLS_DIR" ]] || die "tools dir not found: $TOOLS_DIR"
+
+  mkdir -p "$DEST_BIN"
+
+  log_info "BASE_DIR=$BASE_DIR"
+  log_info "TOOLS_DIR=$TOOLS_DIR"
+  log_info "DEST_BIN=$DEST_BIN"
+
+  install_etcd_tools
+  install_helm
+  install_nerdctl
+  install_k9s
+  install_stern
+  install_go_containerregistry
+  install_single_binaries
+
+  validate
+
+  log_info "All tools installation complete."
+}
+
+main "$@"

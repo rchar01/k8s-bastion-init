@@ -1,0 +1,292 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-bootstrap-machine"
+
+# --------------------------------------------------
+# Machine bootstrap - installs tools and container runtime
+# Does NOT require access-policy.yaml (that's for users bootstrap)
+# --------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bastion-bootstrap-machine --init --source DIR
+  bastion-bootstrap-machine --reconcile --source DIR
+  bastion-bootstrap-machine --help
+
+Modes:
+  --init        Install/overwrite machine runtime from DIR and (if node artifacts detected) clean node remnants.
+  --reconcile   Install/overwrite machine runtime from DIR (NO destructive node cleanup).
+
+Options:
+  --source DIR  Path to bastion project directory (e.g. /bastion). Required.
+EOF
+}
+
+MODE=""
+SOURCE_DIR=""
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --init)
+        MODE="init"; shift ;;
+      --reconcile)
+        MODE="reconcile"; shift ;;
+      --source)
+        SOURCE_DIR="$2"; shift 2 ;;
+      -h|--help)
+        usage; exit 0 ;;
+      *)
+        echo "ERROR: Unknown argument: $1" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+
+  [[ -n "$MODE" ]] || { echo "ERROR: Choose --init or --reconcile" >&2; usage; exit 1; }
+  [[ -n "$SOURCE_DIR" ]] || { echo "ERROR: --source is required" >&2; usage; exit 1; }
+
+  SOURCE_DIR="$(readlink -f "$SOURCE_DIR")"
+}
+
+# --------------------------------------------------
+# Constants
+# --------------------------------------------------
+
+LIB_DST="/usr/local/lib/bastion"
+BIN_DST="/usr/local/bin"
+SBIN_DST="/usr/local/sbin"
+INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
+MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
+
+# --------------------------------------------------
+# Helpers (no shared libs yet)
+# --------------------------------------------------
+
+die_plain() { echo "ERROR: $*" >&2; exit 1; }
+
+need_cmd_plain() {
+  command -v "$1" >/dev/null 2>&1 || die_plain "Missing command: $1"
+}
+
+# Install/copy only if different (cmp). Keeps idempotency.
+install_file_if_changed() {
+  local src="$1" dst="$2" mode="$3"
+  install -d "$(dirname "$dst")"
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    return 1
+  fi
+
+  install -m "$mode" "$src" "$dst"
+  return 0
+}
+
+install_tree_dir() {
+  local src_dir="$1" dst_dir="$2" mode="$3" pattern="${4:-*}"
+  install -d "$dst_dir"
+
+  local f any=0
+  for f in "$src_dir"/$pattern; do
+    [[ -e "$f" ]] || continue
+    any=1
+    local base; base="$(basename "$f")"
+    if install_file_if_changed "$f" "$dst_dir/$base" "$mode"; then
+      log_info "Installed: $dst_dir/$base"
+    else
+      log_debug "Unchanged: $dst_dir/$base"
+    fi
+  done
+
+  [[ "$any" -eq 1 ]] || log_warn "No files matched in $src_dir ($pattern)"
+}
+
+node_artifacts_present() {
+  [[ -d /var/lib/kubelet ]] && return 0
+  [[ -d /etc/kubernetes/pki ]] && return 0
+  command -v kubelet >/dev/null 2>&1 && return 0
+  return 1
+}
+
+cleanup_node_if_needed() {
+  if ! node_artifacts_present; then
+    log_info "No Kubernetes node artifacts detected — skipping destructive cleanup."
+    return 0
+  fi
+
+  log_warn "Node artifacts detected — performing cleanup (containerd will be reinstalled)."
+
+  # Stop best-effort
+  systemctl stop kubelet containerd >/dev/null 2>&1 || true
+  systemctl disable kubelet containerd >/dev/null 2>&1 || true
+
+  # Remove common node state
+  rm -rf \
+    /var/lib/kubelet \
+    /var/lib/etcd \
+    /var/lib/cni \
+    /etc/cni \
+    /var/lib/containerd \
+    /run/containerd
+
+  # Remove common node config (keep /etc/kubernetes itself, we manage policy there)
+  rm -rf /etc/kubernetes/pki /etc/kubernetes/manifests >/dev/null 2>&1 || true
+  rm -f \
+    /etc/kubernetes/admin.conf \
+    /etc/kubernetes/kubelet.conf \
+    /etc/kubernetes/controller-manager.conf \
+    /etc/kubernetes/scheduler.conf \
+    /etc/kubernetes/bootstrap-kubelet.conf >/dev/null 2>&1 || true
+
+  # Remove common node binaries (do not remove kubectl)
+  rm -f \
+    /usr/local/bin/kubelet \
+    /usr/local/bin/kubeadm \
+    /usr/local/bin/crictl \
+    /usr/local/bin/containerd \
+    /usr/local/bin/ctr \
+    /usr/local/bin/nerdctl >/dev/null 2>&1 || true
+
+  rm -f \
+    /usr/bin/kubelet \
+    /usr/bin/kubeadm \
+    /usr/bin/crictl \
+    /usr/bin/containerd \
+    /usr/bin/ctr \
+    /usr/bin/nerdctl >/dev/null 2>&1 || true
+
+  log_info "Node cleanup complete."
+}
+
+read_source_version() {
+  local vf="$SOURCE_DIR/VERSION"
+  [[ -f "$vf" ]] || die_plain "Missing VERSION file in source dir: $vf"
+  tr -d ' \t\r\n' <"$vf"
+}
+
+read_installed_version() {
+  if [[ -f "$INSTALLED_VERSION_FILE" ]]; then
+    tr -d ' \t\r\n' <"$INSTALLED_VERSION_FILE"
+  else
+    echo ""
+  fi
+}
+
+# --------------------------------------------------
+# Load shared libs from SOURCE_DIR (now that we know it)
+# --------------------------------------------------
+
+load_libs_from_source() {
+  [[ -f "$SOURCE_DIR/lib/log.sh" ]] || die_plain "Missing lib/log.sh in $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/lib/common.sh" ]] || die_plain "Missing lib/common.sh in $SOURCE_DIR"
+
+  # shellcheck source=/dev/null
+  source "$SOURCE_DIR/lib/log.sh"
+  # shellcheck source=/dev/null
+  source "$SOURCE_DIR/lib/common.sh"
+}
+
+# --------------------------------------------------
+# Machine Bootstrap phases
+# --------------------------------------------------
+
+validate_source_layout() {
+  [[ -d "$SOURCE_DIR/lib" ]] || die "Invalid source dir (missing lib): $SOURCE_DIR"
+  [[ -d "$SOURCE_DIR/bin" ]] || die "Invalid source dir (missing bin): $SOURCE_DIR"
+  [[ -d "$SOURCE_DIR/sbin" ]] || die "Invalid source dir (missing sbin): $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/VERSION" ]] || die "Missing VERSION file in $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/download.conf" ]] || die "Missing download.conf in $SOURCE_DIR"
+  # NOTE: We do NOT require access-policy.yaml here - that's for users bootstrap
+}
+
+install_runtime() {
+  log_info "Installing bastion libraries to $LIB_DST"
+  install -d "$LIB_DST"
+  install_tree_dir "$SOURCE_DIR/lib" "$LIB_DST" "0644" "*.sh"
+
+  log_info "Installing user commands to $BIN_DST"
+  install -d "$BIN_DST"
+  install_tree_dir "$SOURCE_DIR/bin" "$BIN_DST" "0755" "*"
+
+  log_info "Installing admin commands to $SBIN_DST"
+  install -d "$SBIN_DST"
+  install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0755" "*"
+
+  # Record installed version
+  local src_ver; src_ver="$(read_source_version)"
+  install -d "$LIB_DST"
+  printf '%s\n' "$src_ver" >"$INSTALLED_VERSION_FILE"
+  chmod 0644 "$INSTALLED_VERSION_FILE"
+  log_info "Installed bastion version: $src_ver"
+}
+
+apply_machine_state() {
+  # At this point scripts should be in /usr/local/{bin,sbin}.
+  need_cmd bastion-install-containerd
+  need_cmd bastion-install-tools
+
+  log_info "Installing containerd"
+  bastion-install-containerd --base-dir "$SOURCE_DIR"
+
+  log_info "Installing tools from source dir"
+  bastion-install-tools --base-dir "$SOURCE_DIR"
+
+  # Mark machine as initialized
+  touch "$MACHINE_INIT_MARKER"
+  log_info "Machine initialization complete"
+}
+
+verify_machine() {
+  log_info "Verifying machine setup"
+  need_cmd kubectl
+  need_cmd containerd
+  need_cmd helm
+  need_cmd yq
+
+  log_info "Machine bootstrap finished successfully."
+  log_info "Next step: Run bastion-bootstrap-users to configure users and policies"
+}
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+
+main() {
+  parse_args "$@"
+
+  # minimal tool checks before libs
+  need_cmd_plain readlink
+  need_cmd_plain install
+  need_cmd_plain cmp
+
+  load_libs_from_source
+  require_root
+
+  validate_source_layout
+
+  local src_ver inst_ver
+  src_ver="$(read_source_version)"
+  inst_ver="$(read_installed_version)"
+
+  log_info "Mode: $MODE"
+  log_info "Source: $SOURCE_DIR"
+  log_info "Source version: ${src_ver:-unknown}"
+  log_info "Installed version: ${inst_ver:-none}"
+
+  install_runtime
+
+  if [[ "$MODE" == "init" ]]; then
+    # Destructive cleanup only when node artifacts exist
+    cleanup_node_if_needed
+  else
+    log_info "--reconcile selected — skipping destructive node cleanup."
+  fi
+
+  apply_machine_state
+  verify_machine
+}
+
+main "$@"

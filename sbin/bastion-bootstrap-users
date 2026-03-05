@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-bootstrap-users"
+
+# --------------------------------------------------
+# Users bootstrap - configures users, groups, and policies
+# REQUIRES: Machine bootstrap to be completed first (needs yq)
+# REQUIRES: access-policy.yaml to exist in source directory
+# --------------------------------------------------
+
+usage() {
+  cat <<'EOF'
+Usage:
+  bastion-bootstrap-users --init --source DIR
+  bastion-bootstrap-users --reconcile --source DIR
+  bastion-bootstrap-users --help
+
+Modes:
+  --init        Configure users and policies from DIR.
+  --reconcile   Re-apply user configuration (updates groups, kubeconfigs).
+
+Options:
+  --source DIR  Path to bastion project directory (e.g. /bastion). Required.
+                Must contain rendered access-policy.yaml.
+EOF
+}
+
+MODE=""
+SOURCE_DIR=""
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --init)
+        MODE="init"; shift ;;
+      --reconcile)
+        MODE="reconcile"; shift ;;
+      --source)
+        SOURCE_DIR="$2"; shift 2 ;;
+      -h|--help)
+        usage; exit 0 ;;
+      *)
+        echo "ERROR: Unknown argument: $1" >&2
+        usage
+        exit 1
+        ;;
+    esac
+  done
+
+  [[ -n "$MODE" ]] || { echo "ERROR: Choose --init or --reconcile" >&2; usage; exit 1; }
+  [[ -n "$SOURCE_DIR" ]] || { echo "ERROR: --source is required" >&2; usage; exit 1; }
+
+  SOURCE_DIR="$(readlink -f "$SOURCE_DIR")"
+}
+
+# --------------------------------------------------
+# Constants
+# --------------------------------------------------
+
+LIB_DST="/usr/local/lib/bastion"
+BIN_DST="/usr/local/bin"
+SBIN_DST="/usr/local/sbin"
+POLICY_DST="/etc/kubernetes/access-policy.yaml"
+INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
+MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
+USERS_INIT_MARKER="${LIB_DST}/.users-init-done"
+
+# --------------------------------------------------
+# Helpers (no shared libs yet)
+# --------------------------------------------------
+
+die_plain() { echo "ERROR: $*" >&2; exit 1; }
+
+need_cmd_plain() {
+  command -v "$1" >/dev/null 2>&1 || die_plain "Missing command: $1"
+}
+
+# Install/copy only if different (cmp). Keeps idempotency.
+install_file_if_changed() {
+  local src="$1" dst="$2" mode="$3"
+  install -d "$(dirname "$dst")"
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    return 1
+  fi
+
+  install -m "$mode" "$src" "$dst"
+  return 0
+}
+
+read_source_version() {
+  local vf="$SOURCE_DIR/VERSION"
+  [[ -f "$vf" ]] || die_plain "Missing VERSION file in source dir: $vf"
+  tr -d ' \t\r\n' <"$vf"
+}
+
+# --------------------------------------------------
+# Load shared libs from system (installed by machine bootstrap)
+# --------------------------------------------------
+
+load_system_libs() {
+  [[ -f "${LIB_DST}/log.sh" ]] || die_plain "Missing system lib/log.sh - run bastion-bootstrap-machine first"
+  [[ -f "${LIB_DST}/common.sh" ]] || die_plain "Missing system lib/common.sh - run bastion-bootstrap-machine first"
+
+  # shellcheck source=/dev/null
+  source "${LIB_DST}/log.sh"
+  # shellcheck source=/dev/null
+  source "${LIB_DST}/common.sh"
+}
+
+# --------------------------------------------------
+# Users Bootstrap phases
+# --------------------------------------------------
+
+validate_prerequisites() {
+  # Check machine bootstrap was done
+  if [[ ! -f "$MACHINE_INIT_MARKER" ]]; then
+    die_plain "Machine bootstrap not completed."
+    die_plain "Run: sudo ./sbin/bastion-bootstrap-machine --init --source $SOURCE_DIR"
+  fi
+
+  # Check yq is available (installed by machine bootstrap)
+  if ! command -v yq &>/dev/null; then
+    die_plain "yq not found. Run bastion-bootstrap-machine first to install tools."
+  fi
+
+  # Validate source directory has required files
+  [[ -d "$SOURCE_DIR" ]] || die "Source directory not found: $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/access-policy.yaml" ]] || die "Missing access-policy.yaml in $SOURCE_DIR - render policy first"
+  [[ -f "$SOURCE_DIR/user-tools.txt" ]] || die "Missing user-tools.txt in $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/admin-tools.txt" ]] || die "Missing admin-tools.txt in $SOURCE_DIR"
+  [[ -f "$SOURCE_DIR/kubeconfigs/k8s-admin.kubeconfig" ]] || die "Missing admin kubeconfig in $SOURCE_DIR/kubeconfigs/"
+  [[ -f "$SOURCE_DIR/VERSION" ]] || die "Missing VERSION file in $SOURCE_DIR"
+}
+
+install_policy() {
+  log_info "Installing policy to $POLICY_DST"
+  if install_file_if_changed "$SOURCE_DIR/access-policy.yaml" "$POLICY_DST" "0644"; then
+    log_info "Policy updated: $POLICY_DST"
+  else
+    log_debug "Policy unchanged: $POLICY_DST"
+  fi
+}
+
+apply_users_state() {
+  # At this point scripts should be in /usr/local/{bin,sbin} and policy installed.
+  need_cmd bastion-bootstrap-user-groups
+  need_cmd bastion-bootstrap-kubeconfig
+  need_cmd bastion-bootstrap-admin-kubeconfig
+  need_cmd bastion-login-profile
+
+  log_info "Ensuring user groups"
+  bastion-bootstrap-user-groups --policy "$POLICY_DST"
+
+  log_info "Bootstrapping kubeconfigs for all users"
+  bastion-bootstrap-kubeconfig --all --policy "$POLICY_DST"
+
+  log_info "Bootstrapping admin kubeconfigs"
+  bastion-bootstrap-admin-kubeconfig \
+    --policy "$POLICY_DST" \
+    --admin-kubeconfig "$SOURCE_DIR/kubeconfigs/k8s-admin.kubeconfig"
+
+  log_info "Installing login profile"
+  bastion-login-profile \
+    --init \
+    --user-tools "$SOURCE_DIR/user-tools.txt" \
+    --admin-tools "$SOURCE_DIR/admin-tools.txt"
+
+  # Mark users as initialized
+  touch "$USERS_INIT_MARKER"
+  log_info "Users initialization complete"
+}
+
+verify_users() {
+  log_info "Verifying users setup"
+  
+  # Check policy is readable with yq
+  if ! yq -e '.' "$POLICY_DST" >/dev/null 2>&1; then
+    die "Policy file is not valid YAML: $POLICY_DST"
+  fi
+
+  # Check users exist in policy
+  local user_count
+  user_count=$(yq -r '.users | keys | length' "$POLICY_DST")
+  log_info "Configured users in policy: $user_count"
+
+  log_info "Users bootstrap finished successfully."
+  log_info "Users can now run: bastion-kube-renew"
+}
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+
+main() {
+  parse_args "$@"
+
+  # minimal tool checks before libs
+  need_cmd_plain readlink
+  need_cmd_plain install
+  need_cmd_plain cmp
+
+  load_system_libs
+  require_root
+
+  validate_prerequisites
+
+  log_info "Mode: $MODE"
+  log_info "Source: $SOURCE_DIR"
+
+  install_policy
+  apply_users_state
+  verify_users
+}
+
+main "$@"

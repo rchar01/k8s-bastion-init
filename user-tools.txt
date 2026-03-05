@@ -1,0 +1,16 @@
+# User tools - available to all bastion users
+# These are the tools installed in /usr/local/bin
+kubectl
+helm
+k9s
+stern
+jq
+yq
+skopeo
+regctl
+crane
+gcrane
+krane
+nerdctl
+etcdctl
+etcdutl

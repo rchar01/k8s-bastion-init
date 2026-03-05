@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-render-policy"
+
+# --------------------------------------------------
+# Resolve bastion library location (installed + bootstrap)
+# --------------------------------------------------
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  # Installed (preferred)
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo "/usr/local/lib/bastion"; return; }
+  # Legacy installed
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo "/usr/lib/bastion"; return; }
+  # Repo/bootstrap layout: ../lib contains log.sh
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  # Container-mounted repo
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "ERROR: bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+# shellcheck source=/usr/local/lib/bastion/log.sh
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+# --------------------------------------------------
+# Usage
+# --------------------------------------------------
+usage() {
+  cat <<'EOF'
+Usage:
+  bastion-render-policy --policy-repo DIR --env ENV [--init-repo DIR] [--output FILE] [--env-marker FILE]
+
+Purpose:
+  Render (merge) access policy from:
+    - public base:  <init-repo>/access-policy.yaml
+    - private base: <policy-repo>/base.yaml
+    - env overlay:  <policy-repo>/envs/<env>.yaml
+
+Merge precedence (later wins):
+  ENV overlay > private base > public base
+
+Defaults:
+  --init-repo    Auto-detected if possible (see below)
+  --output       <init-repo>/access-policy.yaml
+  --env-marker   <init-repo>/.policy-env
+
+Init repo auto-detection order:
+  1) If ./access-policy.yaml exists, init-repo = $PWD
+  2) If <script_dir>/../access-policy.yaml exists, init-repo = <script_dir>/..
+
+Examples:
+  bastion-render-policy --policy-repo ../k8s-bastion-policy --env prod --init-repo ../k8s-bastion-init
+  bastion-render-policy --policy-repo /srv/k8s-bastion-policy --env preprod --output /bastion/access-policy.yaml
+EOF
+}
+
+# --------------------------------------------------
+# Args
+# --------------------------------------------------
+POLICY_REPO=""
+ENVIRONMENT=""
+INIT_REPO=""
+OUTPUT_FILE=""
+ENV_MARKER=""
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --policy-repo) POLICY_REPO="$2"; shift 2 ;;
+      --env) ENVIRONMENT="$2"; shift 2 ;;
+      --init-repo) INIT_REPO="$2"; shift 2 ;;
+      --output) OUTPUT_FILE="$2"; shift 2 ;;
+      --env-marker) ENV_MARKER="$2"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "Unknown argument: $1" ;;
+    esac
+  done
+
+  [[ -n "$POLICY_REPO" ]] || die "Missing --policy-repo"
+  [[ -n "$ENVIRONMENT" ]] || die "Missing --env"
+
+  POLICY_REPO="$(readlink -f "$POLICY_REPO")"
+
+  # Autodetect init repo if not provided
+  if [[ -z "$INIT_REPO" ]]; then
+    if [[ -f "$PWD/access-policy.yaml" ]]; then
+      INIT_REPO="$PWD"
+    else
+      local script_dir
+      script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+      if [[ -f "${script_dir}/../access-policy.yaml" ]]; then
+        INIT_REPO="$(readlink -f "${script_dir}/..")"
+      fi
+    fi
+  fi
+
+  # If output is not set, we need init repo
+  if [[ -z "$OUTPUT_FILE" ]]; then
+    [[ -n "$INIT_REPO" ]] || die "Cannot determine init repo; provide --init-repo or --output"
+    INIT_REPO="$(readlink -f "$INIT_REPO")"
+    OUTPUT_FILE="${INIT_REPO}/access-policy.yaml"
+  else
+    OUTPUT_FILE="$(readlink -m "$OUTPUT_FILE")"
+    # If init repo still empty, derive it from output path for marker defaulting
+    if [[ -z "$INIT_REPO" ]]; then
+      INIT_REPO="$(readlink -f "$(dirname "$OUTPUT_FILE")")"
+    else
+      INIT_REPO="$(readlink -f "$INIT_REPO")"
+    fi
+  fi
+
+  if [[ -z "$ENV_MARKER" ]]; then
+    ENV_MARKER="${INIT_REPO}/.policy-env"
+  else
+    ENV_MARKER="$(readlink -m "$ENV_MARKER")"
+  fi
+}
+
+# --------------------------------------------------
+# Core
+# --------------------------------------------------
+render_policy() {
+  local public_base private_base env_file
+  public_base="${INIT_REPO}/access-policy.yaml"
+  private_base="${POLICY_REPO}/base.yaml"
+  env_file="${POLICY_REPO}/envs/${ENVIRONMENT}.yaml"
+
+  [[ -f "$public_base" ]] || die "Missing public access-policy.yaml: $public_base"
+  [[ -f "$private_base" ]] || die "Missing private base.yaml: $private_base"
+  [[ -f "$env_file" ]] || die "Missing env file: $env_file"
+
+  log_info "Rendering policy env=${ENVIRONMENT}"
+  log_debug "Public base : $public_base"
+  log_debug "Private base: $private_base"
+  log_debug "Env overlay : $env_file"
+  log_debug "Output      : $OUTPUT_FILE"
+
+  local tmp
+  tmp="$(mktemp)"
+  trap '[[ -n "${tmp:-}" ]] && rm -f "$tmp"' RETURN
+
+  # Merge order: public -> private -> env (later wins)
+  yq eval-all '
+    . as $item
+    ireduce ({}; . * $item)
+  ' \
+    "$public_base" \
+    "$private_base" \
+    "$env_file" \
+    > "$tmp"
+
+  install -d "$(dirname "$OUTPUT_FILE")"
+
+  if [[ -f "$OUTPUT_FILE" ]] && cmp -s "$tmp" "$OUTPUT_FILE"; then
+    log_info "Policy unchanged — no update."
+  else
+    install -m 0644 "$tmp" "$OUTPUT_FILE"
+    log_info "Policy written: $OUTPUT_FILE"
+  fi
+
+  # Record env marker (idempotent)
+  install -d "$(dirname "$ENV_MARKER")"
+  if [[ -f "$ENV_MARKER" ]] && grep -qx "$ENVIRONMENT" "$ENV_MARKER" 2>/dev/null; then
+    log_debug "Env marker unchanged: $ENV_MARKER"
+  else
+    printf '%s\n' "$ENVIRONMENT" > "$ENV_MARKER"
+    chmod 0644 "$ENV_MARKER" || true
+    log_info "Env marker set: $ENV_MARKER = $ENVIRONMENT"
+  fi
+}
+
+main() {
+  need_cmd yq
+  need_cmd mktemp
+  need_cmd install
+  need_cmd cmp
+  need_cmd readlink
+
+  parse_args "$@"
+
+  [[ -d "$POLICY_REPO" ]] || die "Policy repo dir not found: $POLICY_REPO"
+  [[ -d "$INIT_REPO" ]] || die "Init repo dir not found: $INIT_REPO"
+
+  render_policy
+  log_info "Done."
+}
+
+main "$@"

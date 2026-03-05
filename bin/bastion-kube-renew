@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-kube-renew"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
+
+POLICY="/etc/kubernetes/access-policy.yaml"
+BOOTSTRAP="$HOME/.kube/bootstrap"
+KUBECONFIG_OUT="$HOME/.kube/config"
+
+# --------------------------------------------------
+# Validation (no sudo allowed)
+# --------------------------------------------------
+
+if [[ "$EUID" -eq 0 ]]; then
+  die "Do not run as root"
+fi
+
+[[ -f "$BOOTSTRAP" ]] || die "Missing bootstrap kubeconfig: $BOOTSTRAP"
+[[ -f "$POLICY" ]] || die "Policy file not found: $POLICY"
+
+need_cmd kubectl
+need_cmd openssl
+need_cmd yq
+need_cmd base64
+need_cmd id
+need_cmd mktemp
+
+USER_NAME="$(id -un)"
+
+PREFIX="$(yq -r '.csr.groupPrefix' "$POLICY")"
+TTL="$(yq -r '.csr.expirationSeconds' "$POLICY")"
+SIGNER="$(yq -r '.csr.signerName' "$POLICY")"
+
+[[ -n "$PREFIX" ]] || die "csr.groupPrefix missing in policy"
+[[ -n "$TTL" ]] || die "csr.expirationSeconds missing in policy"
+[[ -n "$SIGNER" ]] || die "csr.signerName missing in policy"
+
+# --------------------------------------------------
+# Determine allowed groups
+# --------------------------------------------------
+
+mapfile -t GROUPS < <(id -nG | tr ' ' '\n' | grep "^${PREFIX}" || true)
+
+[[ "${#GROUPS[@]}" -gt 0 ]] || die "No ${PREFIX}* groups found for user"
+
+log_info "Renewing Kubernetes access for ${USER_NAME}"
+log_debug "Groups: ${GROUPS[*]}"
+
+# --------------------------------------------------
+# Generate key + CSR
+# --------------------------------------------------
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+key="${tmp}/key.pem"
+csr="${tmp}/req.csr"
+
+SUBJ="/CN=${USER_NAME}"
+for g in "${GROUPS[@]}"; do
+  SUBJ="${SUBJ}/O=${g}"
+done
+
+log_debug "Generating CSR"
+
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout "$key" \
+  -out "$csr" \
+  -subj "$SUBJ" >/dev/null 2>&1
+
+csr_name="${USER_NAME}-$(date +%s)"
+
+# --------------------------------------------------
+# Submit CSR
+# --------------------------------------------------
+
+log_info "Submitting CSR: ${csr_name}"
+
+kubectl --kubeconfig="$BOOTSTRAP" apply -f - >/dev/null <<EOF
+apiVersion: certificates.k8s.io/v1
+kind: CertificateSigningRequest
+metadata:
+  name: ${csr_name}
+  labels:
+    bastion-access: "true"
+spec:
+  signerName: ${SIGNER}
+  expirationSeconds: ${TTL}
+  request: $(base64 -w0 < "$csr")
+  usages:
+  - client auth
+EOF
+
+log_info "Waiting for certificate approval..."
+
+cert=""
+for _ in {1..120}; do
+  cert=$(kubectl --kubeconfig="$BOOTSTRAP" \
+    get csr "$csr_name" \
+    -o jsonpath='{.status.certificate}' 2>/dev/null || true)
+
+  [[ -n "$cert" ]] && break
+  sleep 2
+done
+
+[[ -n "$cert" ]] || die "Timeout waiting for CSR approval"
+
+echo "$cert" | base64 -d > "${tmp}/cert.pem"
+
+# --------------------------------------------------
+# Build kubeconfig (idempotent rebuild)
+# --------------------------------------------------
+
+cluster="$(yq -r '.cluster.name' "$POLICY")"
+server="$(yq -r '.cluster.server' "$POLICY")"
+ca="$(yq -r '.cluster.caFile' "$POLICY")"
+
+[[ -n "$cluster" ]] || die "cluster.name missing in policy"
+[[ -n "$server" ]] || die "cluster.server missing in policy"
+[[ -n "$ca" ]] || die "cluster.caFile missing in policy"
+
+mkdir -p "$HOME/.kube"
+
+if [[ -f "$KUBECONFIG_OUT" ]]; then
+  backup="${KUBECONFIG_OUT}.bak.$(date +%s)"
+  cp "$KUBECONFIG_OUT" "$backup"
+  log_debug "Backup created: $backup"
+fi
+
+log_info "Building kubeconfig"
+
+kubectl config --kubeconfig="$KUBECONFIG_OUT" \
+  set-cluster "$cluster" \
+  --server="$server" \
+  --certificate-authority="$ca" \
+  --embed-certs=true >/dev/null
+
+kubectl config --kubeconfig="$KUBECONFIG_OUT" \
+  set-credentials "$USER_NAME" \
+  --client-certificate="${tmp}/cert.pem" \
+  --client-key="$key" \
+  --embed-certs=true >/dev/null
+
+kubectl config --kubeconfig="$KUBECONFIG_OUT" \
+  set-context "$cluster" \
+  --cluster="$cluster" \
+  --user="$USER_NAME" >/dev/null
+
+kubectl config --kubeconfig="$KUBECONFIG_OUT" \
+  use-context "$cluster" >/dev/null
+
+log_info "✔ Kubernetes access renewed successfully"

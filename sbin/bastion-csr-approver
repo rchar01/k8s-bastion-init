@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-csr-approver"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+# --------------------------------------------------
+# Defaults
+# --------------------------------------------------
+
+POLICY="/etc/kubernetes/access-policy.yaml"
+
+usage() {
+  cat <<EOF
+Usage:
+  bastion-csr-approver [--policy FILE]
+
+Approves valid pending Kubernetes CSRs based on host user groups.
+Safe for cron execution.
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --policy)
+        POLICY="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+}
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+
+pending_csrs() {
+  kubectl get csr \
+    -o jsonpath='{range .items[?(@.status=={})]}{.metadata.name}{"\n"}{end}' \
+    2>/dev/null || true
+}
+
+csr_username() {
+  kubectl get csr "$1" -o jsonpath='{.spec.username}'
+}
+
+csr_request() {
+  kubectl get csr "$1" -o jsonpath='{.spec.request}'
+}
+
+csr_subject() {
+  local req="$1"
+  echo "$req" | base64 -d | openssl req -noout -subject
+}
+
+subject_cn() {
+  sed -n 's/.*CN=\([^,/]*\).*/\1/p'
+}
+
+subject_groups() {
+  grep -o 'O=[^,/]*' | cut -d= -f2
+}
+
+user_exists() {
+  getent passwd "$1" >/dev/null 2>&1
+}
+
+user_groups() {
+  id -nG "$1"
+}
+
+approve_csr() {
+  kubectl certificate approve "$1" >/dev/null
+}
+
+# --------------------------------------------------
+# Validation Logic
+# --------------------------------------------------
+
+validate_csr() {
+  local csr="$1"
+
+  local user req subj cn groups host_groups valid=true
+
+  user="$(csr_username "$csr")"
+
+  if ! user_exists "$user"; then
+    log_warn "DENY $csr — user does not exist: $user"
+    return 1
+  fi
+
+  req="$(csr_request "$csr")"
+  subj="$(csr_subject "$req")"
+
+  cn="$(echo "$subj" | subject_cn)"
+  groups="$(echo "$subj" | subject_groups || true)"
+
+  if [[ "$cn" != "$user" ]]; then
+    log_warn "DENY $csr — CN mismatch (cn=$cn user=$user)"
+    return 1
+  fi
+
+  host_groups="$(user_groups "$user")"
+
+  for g in $groups; do
+    echo "$host_groups" | grep -qw "$g" || valid=false
+  done
+
+  if [[ "$valid" != true ]]; then
+    log_warn "DENY $csr — group mismatch for $user"
+    return 1
+  fi
+
+  return 0
+}
+
+process_csr() {
+  local csr="$1"
+
+  log_debug "Evaluating CSR: $csr"
+
+  if validate_csr "$csr"; then
+    approve_csr "$csr"
+    log_info "APPROVED $csr"
+  fi
+}
+
+# --------------------------------------------------
+# Main
+# --------------------------------------------------
+
+main() {
+  need_cmd kubectl
+  need_cmd openssl
+  need_cmd base64
+  need_cmd getent
+  need_cmd id
+  need_cmd grep
+  need_cmd sed
+
+  parse_args "$@"
+
+  local found=0
+
+  while IFS= read -r csr; do
+    [[ -z "$csr" ]] && continue
+    found=1
+    process_csr "$csr"
+  done < <(pending_csrs)
+
+  if [[ "$found" -eq 0 ]]; then
+    log_debug "No pending CSRs"
+  fi
+}
+
+main "$@"

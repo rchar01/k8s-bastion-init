@@ -1,0 +1,44 @@
+# Rocky Linux 9.5 with systemd for bastion testing
+FROM rockylinux:9.5
+
+# Install required packages
+# Note: curl-minimal is already installed in base image, don't install curl
+RUN dnf install -y \
+    systemd \
+    systemd-devel \
+    openssh-server \
+    sudo \
+    diffutils \
+    wget \
+    git \
+    vim \
+    procps \
+    iproute \
+    iptables \
+    iptables-nft \
+    && dnf clean all
+
+# Enable systemd
+ENV container=podman
+
+# Mask services that don't work in containers
+RUN systemctl mask systemd-modules-load.service systemd-udevd.service
+
+# Create test users
+RUN useradd -m -s /bin/bash alice && \
+    useradd -m -s /bin/bash bob && \
+    echo "alice:alice123" | chpasswd && \
+    echo "bob:bob123" | chpasswd
+
+# Allow passwordless sudo for testing
+RUN echo "alice ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    echo "bob ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Create /bastion directory
+RUN mkdir -p /bastion
+
+# Set working directory
+WORKDIR /bastion
+
+# Start systemd
+CMD ["/usr/sbin/init"]

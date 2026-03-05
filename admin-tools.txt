@@ -1,0 +1,14 @@
+# Admin tools - available to k8s-admin group members
+# These are additional tools from /usr/local/sbin plus all user tools
+bastion-audit-kube-dirs
+bastion-bootstrap
+bastion-bootstrap-admin-kubeconfig
+bastion-bootstrap-kubeconfig
+bastion-bootstrap-user-groups
+bastion-csr-approver
+bastion-csr-cleanup
+bastion-install-containerd
+bastion-install-tools
+bastion-kubeconfig-expiry
+bastion-login-profile
+bastion-version

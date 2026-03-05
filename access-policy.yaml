@@ -1,0 +1,42 @@
+apiVersion: bastion.access/v1
+csr:
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 604800
+  groupPrefix: "k8s-"
+# Test cluster configuration (mock values)
+cluster:
+  name: test-cluster
+  server: https://test-api-server:6443
+  caFile: /etc/kubernetes/ca.crt
+# Test groups
+groups:
+  k8s-group1:
+    namespaces:
+      - namespace-group1a
+      - namespace-group1b
+  k8s-group2:
+    namespaces:
+      - namespace-group2
+  k8s-test-group:
+    namespaces:
+      - test-namespace
+      - default
+# Test environment - defines test users
+users:
+  user1:
+    ensureGroups:
+      - k8s-group1
+  user2:
+    ensureGroups:
+      - k8s-group1
+      - k8s-group2
+  alice:
+    ensureGroups:
+      - k8s-test-group
+  bob:
+    ensureGroups:
+      - k8s-test-group
+  # Added during reconcile test
+  charlie:
+    ensureGroups:
+      - k8s-test-group
