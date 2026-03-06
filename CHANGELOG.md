@@ -7,6 +7,18 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-06
+### Fixed
+- Add shared `die()` helper in common library so all scripts fail consistently on validation and argument errors.
+- Scope CSR approval to bastion-managed requests and validate signer, usages, and group prefix against policy before approval.
+- Scope CSR cleanup to bastion-labeled CSRs for the configured signer to avoid deleting unrelated CSRs.
+
+### Changed
+- Update README command references to the split bootstrap flow (`bastion-bootstrap-machine` and `bastion-bootstrap-users`).
+- Clarify Mode 1/Mode 2 workflows and align examples with current script behavior.
+- Replace and clean up user management documentation for publish-ready accuracy.
+- Update tests documentation to clarify host-vs-container verification steps and `--no-cleanup` behavior.
+
 ## [1.0.0] - 2026-03-05
 ### Added
 - Initial release of Kubernetes Bastion Host Toolkit
