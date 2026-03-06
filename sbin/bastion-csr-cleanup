@@ -38,16 +38,19 @@ source "${LIB_DIR}/common.sh"
 
 # default: 14 days
 RETENTION_SECONDS=$((14 * 24 * 60 * 60))
+POLICY="/etc/kubernetes/access-policy.yaml"
+EXPECTED_SIGNER=""
 
 usage() {
   cat <<EOF
 Usage:
-  bastion-csr-cleanup [--retention-days N]
+  bastion-csr-cleanup [--retention-days N] [--policy FILE]
 
 Deletes approved Kubernetes CSRs older than retention period.
 
 Options:
   --retention-days N   retention window (default: 14)
+  --policy FILE        policy yaml (default: $POLICY)
 EOF
 }
 
@@ -56,6 +59,10 @@ parse_args() {
     case "$1" in
       --retention-days)
         RETENTION_SECONDS=$(( $2 * 24 * 60 * 60 ))
+        shift 2
+        ;;
+      --policy)
+        POLICY="$2"
         shift 2
         ;;
       -h|--help)
@@ -75,9 +82,12 @@ parse_args() {
 
 expired_csrs() {
   kubectl get csr -o json |
-    jq -r --argjson now "$(date +%s)" \
+    jq -r --arg signer "$EXPECTED_SIGNER" \
+      --argjson now "$(date +%s)" \
       --argjson retention "$RETENTION_SECONDS" '
       .items[]
+      | select(.metadata.labels["bastion-access"] == "true")
+      | select(.spec.signerName == $signer)
       | select(.status.certificate != null)
       | . as $csr
       | (
@@ -103,8 +113,13 @@ main() {
   need_cmd kubectl
   need_cmd jq
   need_cmd date
+  need_cmd yq
 
   parse_args "$@"
+
+  [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
+  EXPECTED_SIGNER="$(yq -r '.csr.signerName' "$POLICY")"
+  [[ -n "$EXPECTED_SIGNER" && "$EXPECTED_SIGNER" != "null" ]] || die "csr.signerName missing in policy"
 
   log_debug "Retention seconds: $RETENTION_SECONDS"
 

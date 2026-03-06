@@ -30,6 +30,8 @@ source "${LIB_DIR}/common.sh"
 # --------------------------------------------------
 
 POLICY="/etc/kubernetes/access-policy.yaml"
+EXPECTED_SIGNER=""
+GROUP_PREFIX=""
 
 usage() {
   cat <<EOF
@@ -65,8 +67,17 @@ parse_args() {
 
 pending_csrs() {
   kubectl get csr \
+    -l 'bastion-access=true' \
     -o jsonpath='{range .items[?(@.status=={})]}{.metadata.name}{"\n"}{end}' \
     2>/dev/null || true
+}
+
+csr_signer() {
+  kubectl get csr "$1" -o jsonpath='{.spec.signerName}'
+}
+
+csr_usages() {
+  kubectl get csr "$1" -o jsonpath='{.spec.usages[*]}'
 }
 
 csr_username() {
@@ -109,7 +120,20 @@ approve_csr() {
 validate_csr() {
   local csr="$1"
 
-  local user req subj cn groups host_groups valid=true
+  local user req subj cn groups host_groups valid=true signer usages
+
+  signer="$(csr_signer "$csr")"
+  usages="$(csr_usages "$csr")"
+
+  if [[ "$signer" != "$EXPECTED_SIGNER" ]]; then
+    log_warn "DENY $csr - signer mismatch (signer=$signer expected=$EXPECTED_SIGNER)"
+    return 1
+  fi
+
+  if [[ "$usages" != "client auth" ]]; then
+    log_warn "DENY $csr - unsupported usages: $usages"
+    return 1
+  fi
 
   user="$(csr_username "$csr")"
 
@@ -132,6 +156,7 @@ validate_csr() {
   host_groups="$(user_groups "$user")"
 
   for g in $groups; do
+    [[ "$g" == "${GROUP_PREFIX}"* ]] || valid=false
     echo "$host_groups" | grep -qw "$g" || valid=false
   done
 
@@ -162,12 +187,19 @@ main() {
   need_cmd kubectl
   need_cmd openssl
   need_cmd base64
+  need_cmd yq
   need_cmd getent
   need_cmd id
   need_cmd grep
   need_cmd sed
 
   parse_args "$@"
+
+  [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
+  EXPECTED_SIGNER="$(yq -r '.csr.signerName' "$POLICY")"
+  GROUP_PREFIX="$(yq -r '.csr.groupPrefix' "$POLICY")"
+  [[ -n "$EXPECTED_SIGNER" && "$EXPECTED_SIGNER" != "null" ]] || die "csr.signerName missing in policy"
+  [[ -n "$GROUP_PREFIX" && "$GROUP_PREFIX" != "null" ]] || die "csr.groupPrefix missing in policy"
 
   local found=0
 

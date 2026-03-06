@@ -33,11 +33,9 @@ For basic setups, edit `access-policy.yaml` directly:
 # 1. Configure the policy
 vim access-policy.yaml
 
-# 2. Bootstrap everything at once
-sudo ./bastion_init.sh <environment>
-
-# Example:
-sudo ./bastion_init.sh prod
+# 2. Initialize machine + users (no private policy repo required)
+sudo ./sbin/bastion-bootstrap-machine --init --source .
+sudo ./sbin/bastion-bootstrap-users --init --source .
 ```
 
 ### Mode 2: Production Setup (Policy Merge)
@@ -163,8 +161,8 @@ Uses a **three-layer policy merge system** for managing sensitive configuration 
 │   └── k8s-users-management.md   # User management guide
 ├── kubeconfigs/                   # Admin kubeconfig storage
 │   └── k8s-admin.kubeconfig      # Admin kubeconfig template
-├── bastion_init.sh               # Main entry point: machine → render → users init
-├── bastion_reconcile.sh          # Main entry point: machine → render → users reconcile
+├── bastion_init.sh               # Mode 2 wrapper: machine → render → users init
+├── bastion_reconcile.sh          # Mode 2 wrapper: machine → render → users reconcile
 ├── access-policy.yaml            # Access policy (public base or rendered)
 ├── user-tools.txt                # List of tools for all users
 ├── admin-tools.txt               # List of admin tools
@@ -203,7 +201,7 @@ Uses a **three-layer policy merge system** for managing sensitive configuration 
 
 ### Wrapper Scripts (Root Directory)
 
-**Primary Entry Points:**
+**Policy Merge Entry Points (Mode 2):**
 - **bastion_init.sh**: Main initialization - installs machine, renders policy, configures users (requires `<environment>`)
   - Execution order: Machine → Render Policy → Configure Users
   - This ensures yq is installed before attempting to render policy
@@ -270,7 +268,7 @@ groups:
       - dev-namespace
       - staging-namespace
 
-  k8s-admins:
+  k8s-admin:
     namespaces:
       - all
 
@@ -282,7 +280,7 @@ users:
   bob:
     ensureGroups:
       - k8s-developers
-      - k8s-admins
+      - k8s-admin
 ```
 
 #### Managing Users and Groups (Simple Mode)
@@ -297,7 +295,8 @@ To add or modify users and groups:
 
 2. **Apply changes** using the reconcile command:
    ```bash
-   sudo ./sbin/bastion-bootstrap --reconcile --source .
+   sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
+   sudo ./sbin/bastion-bootstrap-users --reconcile --source .
    ```
 
 This will:
@@ -397,9 +396,10 @@ When your private policy changes:
      --env prod \
      --init-repo .
 
-   # 2. Apply the rendered policy
-   sudo ./sbin/bastion-bootstrap --reconcile --source .
-   ```
+    # 2. Apply the rendered policy
+    sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
+    sudo ./sbin/bastion-bootstrap-users --reconcile --source .
+    ```
 
 #### Policy Rendering Reference
 
@@ -431,7 +431,7 @@ bastion-render-policy --policy-repo DIR --env ENV [options]
 This will:
 - Check that `k8s-bastion-policy` exists at expected location
 - Render the merged policy to `access-policy.yaml`
-- Run `bastion-bootstrap --init` to install everything
+- Run machine and users bootstrap phases
 
 ### Tool Configuration (`download.conf`)
 
@@ -445,7 +445,7 @@ Defines versions for client tools. Only edit this if you need to update tool ver
 **Note:** After changing tool versions, run:
 ```bash
 ./download.sh
-sudo ./sbin/bastion-bootstrap --reconcile --source .
+sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
 ```
 
 ## User Groups
@@ -488,7 +488,8 @@ Users are assigned to groups via the `ensureGroups` field in the policy (see Con
 
 2. **Bootstrap the bastion** (first time only):
    ```bash
-   sudo ./sbin/bastion-bootstrap --init --source .
+   sudo ./sbin/bastion-bootstrap-machine --init --source .
+   sudo ./sbin/bastion-bootstrap-users --init --source .
    ```
 
 #### Adding or Modifying Users
@@ -501,7 +502,8 @@ Users are assigned to groups via the `ensureGroups` field in the policy (see Con
 
 4. **Apply changes** using reconcile:
    ```bash
-   sudo ./sbin/bastion-bootstrap --reconcile --source .
+   sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
+   sudo ./sbin/bastion-bootstrap-users --reconcile --source .
    ```
 
 ### Mode 2: Policy Merge Configuration
@@ -543,7 +545,7 @@ Users are assigned to groups via the `ensureGroups` field in the policy (see Con
    sudo ./bastion_reconcile.sh prod
    ```
 
-   **⚠️ CRITICAL:** Never run reconcile without first rendering the policy! If the private policy changed but you didn't render it, the old policy will be used.
+   The wrapper already renders policy before reconcile.
 
 ### User Certificate Renewal (Both Modes)
 
@@ -572,8 +574,10 @@ Users are assigned to groups via the `ensureGroups` field in the policy (see Con
 | `bastion_init.sh <env>` | First-time setup with policy merge (Mode 2) |
 | `bastion_reconcile.sh <env>` | Update configuration with policy merge (Mode 2) |
 | `bastion-render-policy --policy-repo DIR --env ENV` | Render merged policy from private repo |
-| `bastion-bootstrap --init --source .` | First-time initialization (Mode 1 or after render) |
-| `bastion-bootstrap --reconcile --source .` | Update configuration without destructive changes |
+| `bastion-bootstrap-machine --init --source .` | Machine initialization |
+| `bastion-bootstrap-users --init --source .` | Users/groups/policy initialization |
+| `bastion-bootstrap-machine --reconcile --source .` | Machine reconcile |
+| `bastion-bootstrap-users --reconcile --source .` | Users/groups/policy reconcile |
 | `bastion-kube-renew` | User self-service certificate renewal |
 | `bastion-kubeconfig-expiry` | Check certificate expiration |
 

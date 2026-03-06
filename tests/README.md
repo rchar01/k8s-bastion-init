@@ -72,6 +72,9 @@ tests/
 ./tests/run-all.sh --no-cleanup
 ```
 
+Note: `--no-cleanup` preserves the container only on successful runs. On failure,
+the EXIT trap still performs cleanup.
+
 After tests complete, you can inspect the container:
 
 ```bash
@@ -114,8 +117,11 @@ podman exec -it bastion-test bash
 # Inside container:
 cd /bastion
 ./bastion_init.sh test
+```
 
-# Verify
+Run verification scripts from the host shell (not inside the container):
+
+```bash
 ./tests/verify/check-machine.sh
 ./tests/verify/check-users.sh
 ./tests/verify/check-policy.sh
@@ -211,5 +217,5 @@ chmod +x tests/**/*.sh
 
 - **No Kubernetes cluster**: These tests validate the bastion setup without requiring a real K8s cluster. CSR approval will fail (expected), but everything up to CSR creation is tested.
 - **Privileged containers**: Required for containerd installation and systemd operation
-- **Cleanup**: All containers and volumes are removed after tests (unless --no-cleanup)
+- **Cleanup**: All containers and volumes are removed after tests (`--no-cleanup` preserves them only on success)
 - **Idempotent**: Tests clean up previous state before running

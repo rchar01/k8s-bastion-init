@@ -1,7 +1,8 @@
 # Admin tools - available to k8s-admin group members
 # These are additional tools from /usr/local/sbin plus all user tools
 bastion-audit-kube-dirs
-bastion-bootstrap
+bastion-bootstrap-machine
+bastion-bootstrap-users
 bastion-bootstrap-admin-kubeconfig
 bastion-bootstrap-kubeconfig
 bastion-bootstrap-user-groups
