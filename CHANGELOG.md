@@ -7,6 +7,14 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-03-09
+### Added
+- Add project logo asset and display it in `README.md` for the public repository landing page.
+- Add a `NEWS.md` file summarizing release-to-release changes for readers who want a quick upgrade overview.
+
+### Changed
+- Bump project version to `1.2.0` for the next public release.
+
 ## [1.1.0] - 2026-03-06
 ### Fixed
 - Add shared `die()` helper in common library so all scripts fail consistently on validation and argument errors.

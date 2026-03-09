@@ -1,5 +1,7 @@
 # Kubernetes Bastion Host Toolkit
 
+![Kubernetes Bastion Host Toolkit logo](docs/assets/k8s-bastion-init.png)
+
 A toolkit for converting former Kubernetes nodes into secure bastion hosts with short-lived certificate-based access management.
 
 ## Overview
@@ -141,9 +143,9 @@ Uses a **three-layer policy merge system** for managing sensitive configuration 
 
 ```
 .
-├── bin/                           # User-facing commands
+├── bin/                          # User-facing commands
 │   └── bastion-kube-renew        # Self-service certificate renewal
-├── sbin/                          # Admin commands
+├── sbin/                         # Admin commands
 │   ├── bastion-bootstrap-machine # Machine setup (containerd, tools)
 │   ├── bastion-bootstrap-users   # User setup (policy, groups, kubeconfigs)
 │   ├── bastion-bootstrap-*       # Component bootstrap scripts
@@ -151,15 +153,15 @@ Uses a **three-layer policy merge system** for managing sensitive configuration 
 │   ├── bastion-install-*         # Installation scripts
 │   ├── bastion-render-policy     # Policy merge/render script
 │   └── bastion-*                 # Other admin utilities
-├── lib/                           # Shared libraries
+├── lib/                          # Shared libraries
 │   ├── log.sh                    # Logging functions
 │   ├── common.sh                 # Common utilities
 │   ├── args.sh                   # Argument parsing
 │   └── system.sh                 # System helpers
-├── docs/                          # Documentation
+├── docs/                         # Documentation
 │   ├── bastion-bootstrap.md      # Bootstrap documentation
 │   └── k8s-users-management.md   # User management guide
-├── kubeconfigs/                   # Admin kubeconfig storage
+├── kubeconfigs/                  # Admin kubeconfig storage
 │   └── k8s-admin.kubeconfig      # Admin kubeconfig template
 ├── bastion_init.sh               # Mode 2 wrapper: machine → render → users init
 ├── bastion_reconcile.sh          # Mode 2 wrapper: machine → render → users reconcile
