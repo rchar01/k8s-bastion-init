@@ -2,6 +2,15 @@
 
 This file gives a short, release-oriented view of what changed between versions.
 
+## 1.3.0
+
+Compared with `1.2.0`:
+
+- makes downloader source URLs configurable per tool in `download.conf`
+- moves default download URLs out of `download.sh` and into config
+- adds automated test coverage for downloader URL template and override behavior
+- includes the new downloader test in the main `./tests/run-all.sh` suite
+
 ## 1.2.0
 
 Compared with `1.1.0`:

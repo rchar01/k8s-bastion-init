@@ -48,6 +48,7 @@ tests/
 │   │       └── test.yaml      # Test users (alice, bob)
 │   └── test-users.sh          # Script to create test users
 ├── scenarios/
+│   ├── test-download-config.sh # Test download.conf URL templates/overrides
 │   ├── test-full-init.sh      # Test complete initialization
 │   ├── test-reconcile.sh      # Test policy updates
 │   └── test-components.sh     # Test individual phases
@@ -99,6 +100,9 @@ Then cleanup manually:
 
 # Run specific test
 ./tests/scenarios/test-full-init.sh
+
+# Run downloader config test
+./tests/scenarios/test-download-config.sh
 
 # Verify specific aspect
 ./tests/verify/check-machine.sh

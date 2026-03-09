@@ -62,6 +62,9 @@ setup() {
 test_phase() {
 	log_header "TEST PHASE"
 
+	# Test 0: Downloader config behavior
+	run_test "Download Config Test" "$SCRIPT_DIR/scenarios/test-download-config.sh"
+
 	# Test 1: Component tests
 	run_test "Component Tests" "$SCRIPT_DIR/scenarios/test-components.sh"
 

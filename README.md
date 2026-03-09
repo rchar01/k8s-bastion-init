@@ -437,14 +437,23 @@ This will:
 
 ### Tool Configuration (`download.conf`)
 
-Defines versions for client tools. Only edit this if you need to update tool versions:
+Defines versions for client tools and the default URL templates used by `download.sh`. You can also override individual tool URLs to use an internal mirror or custom artifact host.
+
+- Version pins for client tools
+- Default `*_URL` templates for each tool download source
 - Kubernetes tools (kubectl, helm, k9s, stern)
 - CLI utilities (jq, yq)
 - Registry tools (crane, regctl, skopeo)
 - etcd tools
 - Container runtime (containerd, nerdctl, runc, CNI)
 
-**Note:** After changing tool versions, run:
+Example URL override:
+
+```bash
+KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl'
+```
+
+**Note:** After changing versions or URL overrides, run:
 ```bash
 ./download.sh
 sudo ./sbin/bastion-bootstrap-machine --reconcile --source .

@@ -7,6 +7,16 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-09
+### Added
+- Add configurable per-tool download URL templates in `download.conf` so tool sources can be redirected to internal mirrors or custom artifact hosts.
+- Add automated coverage for downloader URL template resolution and override behavior in `tests/scenarios/test-download-config.sh`.
+
+### Changed
+- Move default downloader URLs out of `download.sh` and into `download.conf` to keep all tool source configuration in one place.
+- Add downloader test execution to `tests/run-all.sh` and document the scenario in `tests/README.md`.
+- Bump project version to `1.3.0` for the next release.
+
 ## [1.2.0] - 2026-03-09
 ### Added
 - Add project logo asset and display it in `README.md` for the public repository landing page.
