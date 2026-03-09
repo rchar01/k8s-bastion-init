@@ -652,7 +652,3 @@ Common changes include:
 ## License
 
 MIT License. See `LICENSE`.
-
-## Version
-
-Current version: `1.0.0`
