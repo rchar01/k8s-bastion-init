@@ -2,6 +2,50 @@
 
 This repository contains scripts to turn a former Kubernetes node into a clean **bastion host** with short-lived certificate-based access management.
 
+## Installation
+
+### Clone This Repository
+
+```bash
+git clone https://codeberg.org/rch/k8s-bastion-init
+cd k8s-bastion-init
+```
+
+### Optional: Clone Private Policy Repository
+
+If you are using the production policy-merge workflow, clone the private policy repository next to this one:
+
+```bash
+cd ..
+git clone https://codeberg.org/rch/k8s-bastion-policy
+```
+
+Expected layout:
+
+```text
+/workspace/
+├── k8s-bastion-init/
+└── k8s-bastion-policy/
+```
+
+### Prerequisites
+
+- A Linux host you want to convert into a bastion host
+- `sudo` access on that host
+- For production mode: access to the private `k8s-bastion-policy` repository
+
+## Architecture Overview
+
+This toolkit has a **two-phase architecture** that separates machine setup from user configuration:
+
+1. **Machine Phase** (`bastion-bootstrap-machine`): Installs containerd, tools, and scripts
+2. **Users Phase** (`bastion-bootstrap-users`): Configures policy, groups, and kubeconfigs
+
+**Why the split?** The users phase requires `yq` to parse YAML files, but `yq` is not installed until the machine phase completes. This separation also allows you to:
+- Set up the machine without needing a policy file
+- Update machine and users independently
+- Render policy from a private repository after the machine phase installs `yq`
+
 ## Configuration Modes
 
 This toolkit supports two configuration approaches:
@@ -12,7 +56,23 @@ Edit `access-policy.yaml` directly in this repository for basic setups. Good for
 ### Mode 2: Policy Merge (Production)
 Uses a three-layer merge system (public + private + environment) for managing sensitive configuration separately from this public repository. 
 
-**See the main [README.md](../README.md) for detailed documentation** on both modes.
+## Configuration Architecture
+
+### Mode 1: Simple (Single Policy File)
+
+Edit `access-policy.yaml` directly in this repository for basic setups.
+
+### Mode 2: Policy Merge (Recommended for Production)
+
+Uses a three-layer policy merge system for managing sensitive configuration separately:
+
+1. **Public Base** (`access-policy.yaml`) - Base structure in this repo
+2. **Private Base** (`k8s-bastion-policy/base.yaml`) - Sensitive configuration such as cluster URLs
+3. **Environment Overlay** (`k8s-bastion-policy/envs/<env>.yaml`) - Environment-specific settings
+
+**Merge precedence:** Environment > Private > Public
+
+**⚠️ IMPORTANT:** When using policy merge mode, never edit `access-policy.yaml` directly. Always edit files in your private `k8s-bastion-policy` repository.
 
 ## Scripts
 
@@ -262,8 +322,6 @@ For basic setups where you edit `access-policy.yaml` directly:
 
 2. **Bootstrap the bastion** (first time):
    ```bash
-   sudo ./bastion_init.sh <environment>
-   # or manually:
    sudo ./sbin/bastion-bootstrap-machine --init --source .
    sudo ./sbin/bastion-bootstrap-users --init --source .
    ```
@@ -271,8 +329,6 @@ For basic setups where you edit `access-policy.yaml` directly:
 3. **Update configuration** (later):
    ```bash
    vim access-policy.yaml
-   sudo ./bastion_reconcile.sh <environment>
-   # or manually:
    sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
    sudo ./sbin/bastion-bootstrap-users --reconcile --source .
    ```
@@ -315,6 +371,11 @@ For setups with sensitive configuration in a private repository:
    ```
 
    **⚠️ NEVER run bootstrap directly after policy changes!** Always use the wrapper or render policy first.
+
+### What Each Mode Uses
+
+- **Mode 1** - Run `bastion-bootstrap-machine` and `bastion-bootstrap-users` directly against the repository policy file
+- **Mode 2** - Run `bastion_init.sh` or `bastion_reconcile.sh` so policy rendering happens before user configuration
 
 ### User Certificate Renewal (Both Modes)
 

@@ -11,7 +11,7 @@
 # - Use imperative mood (e.g., "add feature" not "added feature")
 # - Subject line ≤ 50 characters
 # - Separate subject from body with a blank line
-# - Wrap body at ~72 characters per line
+# - Wrap body at 72 characters per line
 # - Explain WHY, not just WHAT
 # - One commit = one logical change
 #

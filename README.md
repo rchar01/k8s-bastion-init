@@ -1,8 +1,47 @@
 # Kubernetes Bastion Host Toolkit
 
-![Kubernetes Bastion Host Toolkit logo](docs/assets/k8s-bastion-init.png)
+<div align="center">
+  <img src="docs/assets/k8s-bastion-init-transparent.png" width="256">
+</div>
 
 A toolkit for converting former Kubernetes nodes into secure bastion hosts with short-lived certificate-based access management.
+
+## Installation
+
+### Clone This Repository
+
+```bash
+git clone https://codeberg.org/rch/k8s-bastion-init
+cd k8s-bastion-init
+```
+
+### Optional: Clone Private Policy Repository
+
+If you are using the production policy-merge workflow, clone the private policy repository next to this one:
+
+```bash
+cd ..
+git clone https://codeberg.org/rch/k8s-bastion-policy
+```
+
+Expected layout:
+
+```text
+/workspace/
+├── k8s-bastion-init/
+└── k8s-bastion-policy/
+```
+
+### Prerequisites
+
+- A Linux host you want to convert into a bastion host
+- `sudo` access on that host
+- For production mode: access to the private `k8s-bastion-policy` repository
+
+### Next Step
+
+- For machine bootstrap and reconciliation workflows, see `docs/bastion-bootstrap.md`
+- For user access and certificate renewal workflows, see `docs/k8s-users-management.md`
 
 ## Overview
 
@@ -29,63 +68,13 @@ This toolkit has a **two-phase architecture** that separates machine setup from 
 
 ### Mode 1: Simple Setup (Single Policy File)
 
-For basic setups, edit `access-policy.yaml` directly:
-
-```bash
-# 1. Configure the policy
-vim access-policy.yaml
-
-# 2. Initialize machine + users (no private policy repo required)
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
+For basic setups, edit `access-policy.yaml` directly in this repository, then follow the bootstrap flow in `docs/bastion-bootstrap.md`.
 
 ### Mode 2: Production Setup (Policy Merge)
 
 **⚠️ IMPORTANT:** When using policy merge mode, never edit `access-policy.yaml` directly. Always edit files in your private `k8s-bastion-policy` repository.
 
-#### Initial Setup
-
-```bash
-# Using wrapper script (does machine setup, renders policy, configures users)
-sudo ./bastion_init.sh <environment>
-
-# Example:
-sudo ./bastion_init.sh prod
-```
-
-This will:
-1. Install containerd, tools (including yq), and bastion scripts
-2. Render policy from private repository (now yq is available!)
-3. Configure users, groups, and kubeconfigs
-
-#### Update Configuration (When Private Policy Changes)
-
-```bash
-# Update everything
-sudo ./bastion_reconcile.sh <environment>
-
-# Example:
-sudo ./bastion_reconcile.sh prod
-```
-
-#### Manual Steps (Advanced)
-
-If you need to run phases separately:
-
-```bash
-# 1. Machine setup (installs yq)
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-
-# 2. Render policy (requires yq from step 1)
-sudo ./sbin/bastion-render-policy \
-  --policy-repo ../k8s-bastion-policy \
-  --env prod \
-  --init-repo .
-
-# 3. Configure users (requires rendered policy)
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
+For production setups, keep `k8s-bastion-init` and `k8s-bastion-policy` side by side, edit policy in the private repository, then follow the bootstrap or reconcile workflow in `docs/bastion-bootstrap.md`.
 
 ## Architecture
 
