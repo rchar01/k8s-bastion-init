@@ -4,6 +4,8 @@ This file gives a short, release-oriented view of what changed between versions.
 
 ## Unreleased
 
+## 1.4.0
+
 Compared with `1.3.0`:
 
 - adds `bastion-disable-user` for explicit bastion-side user access deactivation

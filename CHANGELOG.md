@@ -7,6 +7,8 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-11
+
 ### Added
 - Add `bastion-disable-user` to explicitly remove bastion-managed Kubernetes access for a target host user.
 - Add automated coverage for user deactivation in `tests/scenarios/test-disable-user.sh` and include it in `tests/run-all.sh`.
