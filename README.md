@@ -79,8 +79,8 @@ The users phase depends on `yq`, which is installed by the machine phase. That i
 
 ### Configuration Modes
 
-- **Mode 1: Simple** - edit `access-policy.yaml` directly in this repository; this file is the source of truth
-- **Mode 2: Policy Merge** - keep sensitive configuration in `k8s-bastion-policy`; `bastion-render-policy` merges public base + private base + environment overlay
+- **Mode 1: Simple (non-production)** - edit `access-policy.yaml` directly in this repository; suitable for labs, testing, and small standalone setups
+- **Mode 2: Policy Merge (recommended for production)** - keep sensitive configuration in `k8s-bastion-policy`; `bastion-render-policy` merges public base + private base + environment overlay
 
 When using policy merge mode, never edit `access-policy.yaml` directly in this repository after rendering. Update the private policy repository instead.
 
@@ -92,20 +92,16 @@ For a single command overview of common repository tasks, run:
 make help
 ```
 
-### Mode 1: Simple Setup
+Use `make` as a convenience layer for discovery and local workflows.
+Use the shell scripts as the primary operational interface.
 
-```bash
-vim access-policy.yaml
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
-
-### Mode 2: Policy Merge Setup
-
-```bash
-sudo ./bastion_init.sh prod
-sudo ./bastion_reconcile.sh prod
-```
+- **Production / recommended**
+  - use Mode 2 with `k8s-bastion-policy`
+  - initialize with `sudo ./bastion_init.sh <env>`
+  - update with `sudo ./bastion_reconcile.sh <env>`
+- **Non-production / simple**
+  - use Mode 1 with `access-policy.yaml` directly in this repo
+  - initialize and reconcile with the direct `bastion-bootstrap-machine` and `bastion-bootstrap-users` commands
 
 ### Common Commands
 
@@ -115,6 +111,12 @@ make download
 
 # Render merged policy manually
 sudo ./sbin/bastion-render-policy --policy-repo ../k8s-bastion-policy --env prod --init-repo .
+
+# Production bootstrap
+sudo ./bastion_init.sh prod
+
+# Production reconcile
+sudo ./bastion_reconcile.sh prod
 
 # User certificate renewal
 bastion-kube-renew
@@ -127,7 +129,7 @@ sudo bastion-kubeconfig-expiry
 make test
 ```
 
-For full bootstrap and reconcile procedures, see `docs/bastion-bootstrap.md`.
+For exact bootstrap, reconcile, and operator runbook procedures, see `docs/bastion-bootstrap.md`.
 
 ## Configuration Snapshot
 
@@ -193,6 +195,25 @@ k8s-bastion-policy/
 - `envs/<env>.yaml` stores environment-specific overlays, such as user assignments
 
 Detailed examples for `base.yaml` and `envs/<env>.yaml` are in `docs/bastion-bootstrap.md`.
+
+## Configuration Files
+
+This repository intentionally keeps different configuration inputs separate:
+
+- `access-policy.yaml` - main bastion access policy in Mode 1, and the rendered public output in Mode 2
+- `k8s-bastion-policy/base.yaml` - private base policy for Mode 2
+- `k8s-bastion-policy/envs/<env>.yaml` - environment-specific policy overlays for Mode 2
+- `download.conf` - tool versions and download URL configuration for `download.sh`
+- `user-tools.txt` - tool names shown to regular bastion users
+- `admin-tools.txt` - additional tool names shown to `k8s-admin` users
+- `kubeconfigs/k8s-admin.kubeconfig` - admin kubeconfig template installed for privileged users
+
+Additional repository metadata and generated state:
+
+- `VERSION` - project version metadata
+- `.policy-env` - last rendered environment marker for Mode 2
+
+These files are kept separate because they have different roles, change cadences, and consumers.
 
 ### Tool Configuration
 

@@ -55,13 +55,13 @@ The toolkit has a two-phase architecture:
 
 The users phase depends on `yq`, so the machine phase must run first.
 
-### Mode 1: Simple Configuration
+### Mode 1: Simple Configuration (Non-Production)
 
 - Edit `access-policy.yaml` directly in this repository
 - Use direct machine and users bootstrap commands
-- Best for simple or self-contained deployments
+- Best for labs, testing, and small self-contained deployments
 
-### Mode 2: Policy Merge Configuration
+### Mode 2: Policy Merge Configuration (Recommended For Production)
 
 - Keep sensitive cluster data and environment overlays in `k8s-bastion-policy`
 - Use `bastion-render-policy` or the wrapper scripts
@@ -120,6 +120,39 @@ users:
 ```
 
 ## Canonical Workflows
+
+## Initialize A Bastion Machine
+
+Choose one of these first-time bootstrap paths:
+
+### Production Bootstrap (Recommended)
+
+Use policy-merge mode when building a real bastion host for ongoing operations.
+
+```bash
+./download.sh
+cd ../k8s-bastion-policy
+vim base.yaml
+vim envs/prod.yaml
+
+cd ../k8s-bastion-init
+sudo ./bastion_init.sh prod
+```
+
+This is the main operational path for production use.
+
+### Simple Bootstrap (Non-Production)
+
+Use simple mode for labs, testing, and standalone setups where editing a single policy file directly is acceptable.
+
+```bash
+./download.sh
+vim access-policy.yaml
+sudo ./sbin/bastion-bootstrap-machine --init --source .
+sudo ./sbin/bastion-bootstrap-users --init --source .
+```
+
+Do not treat this as the preferred production workflow.
 
 ### Mode 1: Initial Bootstrap
 
@@ -200,6 +233,10 @@ sudo ./sbin/bastion-bootstrap-users --init --source .
 Do not run `bastion-render-policy` before the machine phase, because `yq` is installed during machine bootstrap.
 
 ## Script Reference
+
+Use the shell scripts in this guide as the canonical operator interface.
+The `Makefile` mirrors a few common commands for convenience, but does
+not replace the direct script workflows.
 
 ### Wrapper Scripts
 
