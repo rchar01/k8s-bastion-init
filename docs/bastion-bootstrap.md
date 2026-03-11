@@ -279,6 +279,123 @@ sudo bastion-kubeconfig-expiry
 
 For end-user renewal and access behavior, see `docs/k8s-users-management.md`.
 
+## Production Rollout Checklist
+
+Use this checklist before and immediately after the first production bootstrap.
+
+### Preflight
+
+- verify `k8s-bastion-policy/base.yaml` and `k8s-bastion-policy/envs/<env>.yaml` contain the intended production users and groups
+- verify `cluster.server` points to the real Kubernetes API endpoint
+- verify `cluster.caFile` exists on the bastion host and matches the target cluster CA
+- verify `kubeconfigs/k8s-admin.kubeconfig` is the intended admin template for the target cluster
+- review `k8s-admin` membership carefully before the first init
+- run `./download.sh` or `make download`
+
+### Initial Production Bootstrap
+
+```bash
+sudo ./bastion_init.sh <env>
+```
+
+### Immediate Post-Init Checks
+
+- run `kubectl cluster-info`
+- run `sudo bastion-kubeconfig-expiry`
+- verify `/etc/kubernetes/access-policy.yaml` matches the rendered production policy
+- verify `/etc/profile.d/bastion-login.sh` exists
+- verify at least one intended admin received the expected kubeconfig
+
+## Post-Init Verification Checklist
+
+Use these checks before declaring the bastion ready for general use.
+
+### Admin Verification
+
+- SSH to the bastion as an intended admin user
+- verify `kubectl cluster-info` works from that account
+- verify the admin sees the expected `k8s-*` groups and tool list on login
+
+### Regular User Verification
+
+- bootstrap a test user with `sudo bastion-bootstrap-kubeconfig --user <user>` if needed
+- SSH as that user and run `bastion-kube-renew`
+- verify the resulting `~/.kube/config` can reach the cluster with the expected permissions
+
+### Deactivation Verification
+
+- remove a test user from policy or reduce their groups
+- reconcile the bastion
+- run `sudo bastion-disable-user --user <user>`
+- verify `id -nG <user>` no longer contains bastion-managed `k8s-*` groups
+- verify `~/.kube/bootstrap` and `~/.kube/config` are no longer active for that user
+
+## Scheduling Examples
+
+This repository does not install timers or cron jobs automatically, but these
+examples are a good production starting point.
+
+### Cron Example
+
+```cron
+*/2 * * * * root /usr/local/sbin/bastion-csr-approver >/var/log/bastion-csr-approver.log 2>&1
+15 */6 * * * root /usr/local/sbin/bastion-csr-cleanup >/var/log/bastion-csr-cleanup.log 2>&1
+```
+
+### systemd Timer Example
+
+Approver service:
+
+```ini
+[Unit]
+Description=Bastion CSR approver
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-csr-approver
+```
+
+Approver timer:
+
+```ini
+[Unit]
+Description=Run bastion CSR approver periodically
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Unit=bastion-csr-approver.service
+
+[Install]
+WantedBy=timers.target
+```
+
+Cleanup service:
+
+```ini
+[Unit]
+Description=Bastion CSR cleanup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-csr-cleanup
+```
+
+Cleanup timer:
+
+```ini
+[Unit]
+Description=Run bastion CSR cleanup periodically
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Unit=bastion-csr-cleanup.service
+
+[Install]
+WantedBy=timers.target
+```
+
 ## Operator Runbook
 
 ### First Bootstrap

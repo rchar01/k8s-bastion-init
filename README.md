@@ -103,7 +103,7 @@ Use the shell scripts as the primary operational interface.
   - use Mode 1 with `access-policy.yaml` directly in this repo
   - initialize and reconcile with the direct `bastion-bootstrap-machine` and `bastion-bootstrap-users` commands
 
-For exact bootstrap, reconcile, and operator runbook procedures, see `docs/bastion-bootstrap.md`.
+For exact bootstrap, reconcile, production rollout, and operator runbook procedures, see `docs/bastion-bootstrap.md`.
 
 ### Common Commands
 
