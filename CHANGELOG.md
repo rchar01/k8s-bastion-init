@@ -7,6 +7,19 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Add `bastion-disable-user` to explicitly remove bastion-managed Kubernetes access for a target host user.
+- Add automated coverage for user deactivation in `tests/scenarios/test-disable-user.sh` and include it in `tests/run-all.sh`.
+- Add `Makefile` convenience targets for downloads, tests, and wrapper-based init/reconcile workflows.
+- Add `docs/architecture.md` with a high-level bastion access and certificate flow diagram.
+
+### Changed
+- Reorganize `README.md` into a cleaner landing page that points operators to the dedicated bootstrap and user-management docs.
+- Clarify that Mode 1 is non-production and Mode 2 is the recommended production workflow.
+- Expand bootstrap and user-management documentation with day-2 operations, maintenance guidance, and explicit user deactivation procedures.
+- Update admin tool listings to include `bastion-disable-user`.
+- Broaden project wording to cover both clean Linux VMs and repurposed Kubernetes nodes.
+
 ## [1.3.0] - 2026-03-09
 ### Added
 - Add configurable per-tool download URL templates in `download.conf` so tool sources can be redirected to internal mirrors or custom artifact hosts.

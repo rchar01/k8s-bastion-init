@@ -2,6 +2,17 @@
 
 This file gives a short, release-oriented view of what changed between versions.
 
+## Unreleased
+
+Compared with `1.3.0`:
+
+- adds `bastion-disable-user` for explicit bastion-side user access deactivation
+- disables active kubeconfigs and removes bastion-managed `k8s-*` groups during user offboarding
+- adds automated test coverage for the user deactivation workflow
+- adds `Makefile` convenience targets for download, test, and wrapper-based workflows
+- reorganizes the docs around clearer bootstrap, day-2 operations, and architecture guidance
+- broadens project positioning to cover both clean Linux VMs and repurposed Kubernetes nodes
+
 ## 1.3.0
 
 Compared with `1.2.0`:
