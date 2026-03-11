@@ -14,3 +14,4 @@ krane
 nerdctl
 etcdctl
 etcdutl
+bastion-kube-renew

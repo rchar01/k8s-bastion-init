@@ -51,7 +51,7 @@ check_tools() {
 check_scripts() {
 	log_info "Checking bastion scripts..."
 
-	local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy")
+	local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy" "bastion-disable-user")
 	local all_present=true
 
 	for script in "${scripts[@]}"; do

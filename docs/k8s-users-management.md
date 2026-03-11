@@ -130,9 +130,34 @@ Add access:
 
 Remove access:
 
-1. Remove user from relevant host groups.
-2. Optionally reconcile user/group assignments.
-3. Existing cert naturally expires within TTL.
+1. Remove or update the user entry in policy.
+2. Reconcile bastion policy from the admin workflow.
+3. Run `sudo bastion-disable-user --user <user>` on the bastion host.
+4. Verify the user no longer has `k8s-*` groups and no active kubeconfig files.
+
+### Deactivate Or Reduce Access
+
+Use this flow when a user should lose bastion-managed Kubernetes access:
+
+1. Remove the user from policy, or remove the relevant `ensureGroups` entries.
+2. Reconcile the bastion so the active installed policy matches your intended state.
+3. Run:
+
+```bash
+sudo bastion-disable-user --user <user>
+```
+
+By default this command:
+
+- removes bastion-managed `k8s-*` groups from the target user on the host
+- disables `~/.kube/bootstrap`
+- disables `~/.kube/config`
+
+Important:
+
+- remove the user from policy first, otherwise a later reconcile can add groups back
+- for former admins, removing Unix groups alone is not enough; the active kubeconfig must also be removed or disabled
+- existing short-lived certificates copied elsewhere remain valid until their TTL expires
 
 ## Troubleshooting
 

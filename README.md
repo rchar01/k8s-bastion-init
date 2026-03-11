@@ -103,6 +103,8 @@ Use the shell scripts as the primary operational interface.
   - use Mode 1 with `access-policy.yaml` directly in this repo
   - initialize and reconcile with the direct `bastion-bootstrap-machine` and `bastion-bootstrap-users` commands
 
+For exact bootstrap, reconcile, and operator runbook procedures, see `docs/bastion-bootstrap.md`.
+
 ### Common Commands
 
 ```bash
@@ -129,8 +131,6 @@ sudo bastion-kubeconfig-expiry
 make test
 ```
 
-For exact bootstrap, reconcile, and operator runbook procedures, see `docs/bastion-bootstrap.md`.
-
 ## Configuration Snapshot
 
 The access policy defines:
@@ -139,11 +139,9 @@ The access policy defines:
 - Kubernetes-oriented Linux groups
 - User-to-group mappings via `ensureGroups`
 
-Example policy:
+Minimal example:
 
 ```yaml
-apiVersion: bastion.access/v1
-
 csr:
   signerName: kubernetes.io/kube-apiserver-client
   expirationSeconds: 604800
@@ -153,24 +151,6 @@ cluster:
   name: my-cluster
   server: https://10.0.0.1:6443
   caFile: /etc/kubernetes/pki/ca.crt
-
-groups:
-  k8s-developers:
-    namespaces:
-      - dev-namespace
-      - staging-namespace
-  k8s-admin:
-    namespaces:
-      - all
-
-users:
-  alice:
-    ensureGroups:
-      - k8s-developers
-  bob:
-    ensureGroups:
-      - k8s-developers
-      - k8s-admin
 ```
 
 Policy merge mode uses these layers:
@@ -181,20 +161,7 @@ Policy merge mode uses these layers:
 
 Merge precedence is `Environment > Private > Public`.
 
-Expected private policy repository structure:
-
-```text
-k8s-bastion-policy/
-├── base.yaml
-└── envs/
-    ├── prod.yaml
-    └── preprod.yaml
-```
-
-- `base.yaml` stores the private base policy, such as real cluster connection settings and shared groups
-- `envs/<env>.yaml` stores environment-specific overlays, such as user assignments
-
-Detailed examples for `base.yaml` and `envs/<env>.yaml` are in `docs/bastion-bootstrap.md`.
+For the expected private policy repository structure and full examples, see `docs/bastion-bootstrap.md`.
 
 ## Configuration Files
 
@@ -229,102 +196,27 @@ Example override:
 KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kubectl'
 ```
 
-## Repository Layout
-
-```text
-.
-├── bin/                          # User-facing commands
-├── sbin/                         # Admin commands
-├── lib/                          # Shared libraries
-├── docs/                         # Project documentation
-├── Makefile                      # Convenience targets for local workflows
-├── kubeconfigs/                  # Admin kubeconfig templates
-├── tools/                        # Downloaded tool artifacts
-├── bastion_init.sh               # Wrapper: machine -> render -> users init
-├── bastion_reconcile.sh          # Wrapper: machine -> render -> users reconcile
-├── access-policy.yaml            # Policy source or public base template
-├── user-tools.txt                # Tools visible to all users
-├── admin-tools.txt               # Tools visible to k8s-admin users
-├── download.sh                   # Tool download helper
-├── download.conf                 # Tool version and URL configuration
-└── VERSION                       # Project version
-```
-
 ## Core Scripts
 
-### User Scripts
+- `./download.sh` - download tool artifacts defined in `download.conf`
+- `./bastion_init.sh <env>` - production bootstrap wrapper for Mode 2
+- `./bastion_reconcile.sh <env>` - production reconcile wrapper for Mode 2
+- `sudo bastion-disable-user --user <user>` - disable bastion-managed Kubernetes access for a target user
+- `bastion-kube-renew` - user self-service certificate renewal
+- `make help` - list convenience targets for local workflows and tests
 
-- **`bastion-kube-renew`**: user self-service certificate renewal based on current host groups
-
-### Admin Scripts
-
-- **`bastion-bootstrap-machine`**: machine setup for containerd, tools, and installed scripts
-- **`bastion-bootstrap-users`**: installs policy, groups, kubeconfigs, and login profile
-- **`bastion-render-policy`**: merges policy from public, private, and environment layers
-- **`bastion-bootstrap-user-groups`**: creates groups and assigns policy-managed supplementary groups
-- **`bastion-bootstrap-kubeconfig`**: creates bootstrap kubeconfigs for users defined in policy
-- **`bastion-bootstrap-admin-kubeconfig`**: installs admin kubeconfigs for users in the `k8s-admin` policy group
-- **`bastion-csr-approver`**: one-shot CSR approval command intended for periodic execution
-- **`bastion-csr-cleanup`**: removes old bastion-managed CSRs
-- **`bastion-kubeconfig-expiry`**: checks client certificate expiration
-- **`bastion-login-profile`**: generates the SSH login banner and tool summary
-- **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
-
-### Wrapper Scripts
-
-- **`bastion_init.sh`**: Mode 2 initialization using machine -> render -> users
-- **`bastion_reconcile.sh`**: Mode 2 update workflow using machine -> render -> users
-
-### Makefile Convenience Targets
-
-- **`make help`**: list common repository tasks
-- **`make download`**: run `./download.sh`
-- **`make test`**: run the full Podman-based test suite
-- **`make test-no-cleanup`**: run tests and keep the container for inspection
-- **`make test-setup`** / **`make test-cleanup`**: manage the test container lifecycle
-- **`make init ENV=<env>`**: convenience wrapper for `sudo ./bastion_init.sh <env>`
-- **`make reconcile ENV=<env>`**: convenience wrapper for `sudo ./bastion_reconcile.sh <env>`
-
-The shell scripts remain the primary operational interface. The `Makefile` is a convenience layer for common local and operator tasks.
+For the full script reference, see `docs/bastion-bootstrap.md` and `docs/k8s-users-management.md`.
 
 ## Day-2 Operations
 
-Common maintenance tasks after initial bootstrap:
-
-- **Policy changed**
-  - Mode 1: edit `access-policy.yaml`, then run `sudo ./sbin/bastion-bootstrap-machine --reconcile --source .` and `sudo ./sbin/bastion-bootstrap-users --reconcile --source .`
-  - Mode 2: update `k8s-bastion-policy`, then run `sudo ./bastion_reconcile.sh <env>` or `make reconcile ENV=<env>`
-- **New user added**
-  - add the Linux user on the bastion
-  - add the user in policy
-  - reconcile
-  - run `sudo bastion-bootstrap-kubeconfig --user <user>`
-  - have the user log in and run `bastion-kube-renew`
-- **Group membership changed**
-  - update policy and reconcile
-  - have the user start a new login session
-  - have the user run `bastion-kube-renew`
-- **Tool versions updated**
-  - update `download.conf`
-  - run `./download.sh` or `make download`
-  - reconcile the machine phase
-- **Periodic operator tasks**
-  - run `bastion-csr-approver` on a schedule
-  - run `bastion-csr-cleanup` on a schedule
-  - review `sudo bastion-kubeconfig-expiry`
-
-For the full operator runbook, see `docs/bastion-bootstrap.md`.
+For the full operator runbook, including reconcile, new-user onboarding,
+tool updates, and periodic maintenance, see `docs/bastion-bootstrap.md`.
 
 ## Certificate Lifecycle
 
-1. User runs `bastion-kube-renew`
-2. The script reads the user's current `k8s-*` groups from the host
-3. A CSR is created with `CN=<username>` and `O=<group>` values
-4. `bastion-csr-approver` validates signer, usages, CN, prefix, and current host group membership
-5. The signed certificate is embedded into `~/.kube/config`
-6. The certificate expires automatically after its TTL
-
-This repository does not install CSR approval or cleanup timers for you. Operators should schedule `bastion-csr-approver` and `bastion-csr-cleanup` separately.
+User access is based on short-lived certificates renewed with
+`bastion-kube-renew`. For the detailed renewal, approval, and cleanup flow,
+see `docs/k8s-users-management.md`.
 
 ## Testing
 
@@ -346,6 +238,7 @@ The test suite validates:
 
 ## Documentation
 
+- `docs/architecture.md` - high-level architecture and access flow diagram
 - `docs/bastion-bootstrap.md` - full operator bootstrap and reconcile guide
 - `docs/k8s-users-management.md` - user access, renewal, approver, and cleanup guide
 - `tests/README.md` - test suite usage and troubleshooting

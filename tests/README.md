@@ -32,8 +32,9 @@ This will:
 3. Run component tests
 4. Run full initialization test
 5. Run reconciliation test
-6. Verify all aspects of the setup
-7. Clean up containers
+6. Run user deactivation test
+7. Verify all aspects of the setup
+8. Clean up containers
 
 ## Test Structure
 
@@ -49,11 +50,12 @@ tests/
 │   │   └── envs/
 │   │       └── test.yaml      # Test users (alice, bob)
 │   └── test-users.sh          # Script to create test users
-├── scenarios/
-│   ├── test-download-config.sh # Test download.conf URL templates/overrides
-│   ├── test-full-init.sh      # Test complete initialization
-│   ├── test-reconcile.sh      # Test policy updates
-│   └── test-components.sh     # Test individual phases
+	├── scenarios/
+	│   ├── test-download-config.sh # Test download.conf URL templates/overrides
+	│   ├── test-disable-user.sh    # Test user deactivation workflow
+	│   ├── test-full-init.sh      # Test complete initialization
+	│   ├── test-reconcile.sh      # Test policy updates
+	│   └── test-components.sh     # Test individual phases
 ├── verify/
 │   ├── check-machine.sh       # Verify containerd, tools, yq
 │   ├── check-users.sh         # Verify groups and memberships
@@ -166,6 +168,7 @@ Run verification scripts from the host shell (not inside the container):
 ### Integration
 - ✅ Full init workflow (machine → render → users)
 - ✅ Reconcile workflow (updates existing installation)
+- ✅ User deactivation workflow after policy removal
 - ✅ Component isolation (can run phases separately)
 
 ## Test Users

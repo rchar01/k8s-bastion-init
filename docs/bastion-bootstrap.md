@@ -2,6 +2,8 @@
 
 This guide covers operator installation, bootstrap, reconcile, and policy-rendering workflows for the Kubernetes Bastion Host Toolkit.
 
+For a high-level view of the bastion access model and certificate flow, see `docs/architecture.md`.
+
 ## Repository Placement
 
 Start from a checked-out `k8s-bastion-init` repository. For clone commands, see `README.md`.
@@ -119,9 +121,7 @@ users:
       - k8s-production-admins
 ```
 
-## Canonical Workflows
-
-## Initialize A Bastion Machine
+## Bastion Initialization And Reconcile
 
 Choose one of these first-time bootstrap paths:
 
@@ -141,65 +141,7 @@ sudo ./bastion_init.sh prod
 
 This is the main operational path for production use.
 
-### Simple Bootstrap (Non-Production)
-
-Use simple mode for labs, testing, and standalone setups where editing a single policy file directly is acceptable.
-
-```bash
-./download.sh
-vim access-policy.yaml
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
-
-Do not treat this as the preferred production workflow.
-
-### Mode 1: Initial Bootstrap
-
-For simple setups where `access-policy.yaml` in this repository is the source of truth:
-
-```bash
-vim access-policy.yaml
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
-
-### Mode 1: Reconcile Changes
-
-```bash
-vim access-policy.yaml
-sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
-sudo ./sbin/bastion-bootstrap-users --reconcile --source .
-```
-
-This updates:
-
-- `/etc/kubernetes/access-policy.yaml`
-- Linux groups and supplementary group membership
-- bootstrap kubeconfigs
-- admin kubeconfigs for users in `k8s-admin`
-- `/etc/profile.d/bastion-login.sh`
-
-### Mode 2: Initial Bootstrap
-
-For policy-merge setups with a private repository:
-
-```bash
-cd ../k8s-bastion-policy
-vim base.yaml
-vim envs/prod.yaml
-
-cd ../k8s-bastion-init
-sudo ./bastion_init.sh prod
-```
-
-`bastion_init.sh` runs these steps in order:
-
-1. `bastion-bootstrap-machine --init --source .`
-2. `bastion-render-policy --policy-repo ../k8s-bastion-policy --env <env> --init-repo .`
-3. `bastion-bootstrap-users --init --source .`
-
-### Mode 2: Reconcile Changes
+Production reconcile after policy changes:
 
 ```bash
 cd ../k8s-bastion-policy
@@ -214,6 +156,35 @@ sudo ./bastion_reconcile.sh prod
 1. `bastion-bootstrap-machine --reconcile --source .`
 2. `bastion-render-policy --policy-repo ../k8s-bastion-policy --env <env> --init-repo .`
 3. `bastion-bootstrap-users --reconcile --source .`
+
+### Simple Bootstrap (Non-Production)
+
+Use simple mode for labs, testing, and standalone setups where editing a single policy file directly is acceptable.
+
+```bash
+./download.sh
+vim access-policy.yaml
+sudo ./sbin/bastion-bootstrap-machine --init --source .
+sudo ./sbin/bastion-bootstrap-users --init --source .
+```
+
+Do not treat this as the preferred production workflow.
+
+Simple-mode reconcile after policy changes:
+
+```bash
+vim access-policy.yaml
+sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
+sudo ./sbin/bastion-bootstrap-users --reconcile --source .
+```
+
+This updates:
+
+- `/etc/kubernetes/access-policy.yaml`
+- Linux groups and supplementary group membership
+- bootstrap kubeconfigs
+- admin kubeconfigs for users in `k8s-admin`
+- `/etc/profile.d/bastion-login.sh`
 
 After private policy changes, use the wrapper or render policy first. Do not run `bastion-bootstrap-users` directly against stale rendered policy.
 
@@ -260,6 +231,7 @@ These scripts assume:
 - **`bastion-bootstrap-user-groups`**: creates groups and updates supplementary group membership from policy
 - **`bastion-bootstrap-kubeconfig`**: creates `~/.kube/bootstrap` for users defined in policy
 - **`bastion-bootstrap-admin-kubeconfig`**: installs admin kubeconfigs for users in the `k8s-admin` policy group
+- **`bastion-disable-user`**: removes bastion-managed groups and disables active kubeconfigs for a target user
 - **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
@@ -333,6 +305,14 @@ For end-user renewal and access behavior, see `docs/k8s-users-management.md`.
 - reconcile the bastion
 - run `sudo bastion-bootstrap-kubeconfig --user <user>`
 - ask the user to start a new login session and run `bastion-kube-renew`
+
+### Disable Or Reduce User Access
+
+- remove or update the user entry in policy first
+- reconcile the bastion so installed policy matches the intended state
+- run `sudo bastion-disable-user --user <user>`
+- verify the user no longer has bastion-managed `k8s-*` groups
+- verify `~/.kube/bootstrap` and `~/.kube/config` are no longer active for that user
 
 ### Group Membership Changes
 

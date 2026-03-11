@@ -85,6 +85,9 @@ test_phase() {
 
 	# Test 3: Full reconcile
 	run_test "Reconcile Test" "$SCRIPT_DIR/scenarios/test-reconcile.sh"
+
+	# Test 4: User disable workflow
+	run_test "Disable User Test" "$SCRIPT_DIR/scenarios/test-disable-user.sh"
 }
 
 # Verification phase
