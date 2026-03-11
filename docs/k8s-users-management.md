@@ -2,6 +2,8 @@
 
 This guide explains how user access works on the bastion host.
 
+For operator installation, bootstrap, and reconcile workflows, see `docs/bastion-bootstrap.md`.
+
 ## Overview
 
 Access is based on:
@@ -17,7 +19,7 @@ Users do not get long-lived static kubeconfig credentials.
 1. Admin bootstraps a user kubeconfig (`~/.kube/bootstrap`).
 2. User runs `bastion-kube-renew`.
 3. User CSR is submitted to Kubernetes.
-4. `bastion-csr-approver` validates and approves valid CSRs.
+4. `bastion-csr-approver` runs as a periodic one-shot job and approves valid CSRs.
 5. User receives a signed certificate and `~/.kube/config` is rebuilt.
 6. Access expires automatically when the certificate expires.
 
@@ -39,6 +41,10 @@ Users do not get long-lived static kubeconfig credentials.
 | `sudo bastion-kubeconfig-expiry` | Show certificate expiry summary |
 
 ## Admin Bootstrap
+
+Bootstrap kubeconfig creation is policy-driven: the target user must exist in `users:` in the access policy, and the user must also exist on the Linux host.
+
+This guide focuses on the access lifecycle after the bastion is installed. For full host bootstrap procedures, use `docs/bastion-bootstrap.md`.
 
 Run as root:
 
@@ -73,6 +79,12 @@ bastion-kube-renew
 
 If `~/.kube/config` exists, it is backed up to `~/.kube/config.bak.<timestamp>`.
 
+Important:
+
+- renewal approval is based on current Unix group membership, not a second lookup of `users.<name>` in policy
+- users should log out and back in after group changes before running `bastion-kube-renew`
+- `cluster.caFile` in policy must exist and be readable on the bastion host
+
 ## Approver Validation Behavior
 
 `bastion-csr-approver` currently validates:
@@ -84,7 +96,11 @@ If `~/.kube/config` exists, it is backed up to `~/.kube/config.bak.<timestamp>`.
 - all requested groups use the configured group prefix
 - all requested groups are present in host group membership for that user
 
+It does not re-check whether the user appears under `.users` in policy or whether each requested group is defined under `.groups`.
+
 If checks pass, CSR is approved.
+
+Because it is a one-shot command, run it periodically via cron or a systemd timer.
 
 ## Cleanup Behavior
 
@@ -109,7 +125,8 @@ Add access:
 2. Add or update user/group mapping in policy.
 3. Reconcile users/groups from admin workflow.
 4. Bootstrap kubeconfig (`sudo bastion-bootstrap-kubeconfig --user <user>`).
-5. User runs `bastion-kube-renew`.
+5. User starts a new login session if group membership changed.
+6. User runs `bastion-kube-renew`.
 
 Remove access:
 
@@ -151,6 +168,7 @@ sudo bastion-csr-approver
 
 - confirm user is in at least one group with policy prefix (default `k8s-`)
 - confirm policy `csr.groupPrefix` matches your group naming convention
+- if group membership was changed recently, log out and back in before retrying
 
 ### Certificate issued but RBAC denied
 

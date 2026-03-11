@@ -1,24 +1,12 @@
-# Bastion Host Toolkit (Kubernetes)
+# Bastion Host Toolkit Bootstrap Guide
 
-This repository contains scripts to turn a former Kubernetes node into a clean **bastion host** with short-lived certificate-based access management.
+This guide covers operator installation, bootstrap, reconcile, and policy-rendering workflows for the Kubernetes Bastion Host Toolkit.
 
-## Installation
+## Repository Placement
 
-### Clone This Repository
+Start from a checked-out `k8s-bastion-init` repository. For clone commands, see `README.md`.
 
-```bash
-git clone https://codeberg.org/rch/k8s-bastion-init
-cd k8s-bastion-init
-```
-
-### Optional: Clone Private Policy Repository
-
-If you are using the production policy-merge workflow, clone the private policy repository next to this one:
-
-```bash
-cd ..
-git clone https://codeberg.org/rch/k8s-bastion-policy
-```
+If you are using policy-merge mode, place the private repository next to this one.
 
 Expected layout:
 
@@ -28,398 +16,347 @@ Expected layout:
 └── k8s-bastion-policy/
 ```
 
-### Prerequisites
+## Prerequisites
 
 - A Linux host you want to convert into a bastion host
 - `sudo` access on that host
-- For production mode: access to the private `k8s-bastion-policy` repository
+- Downloaded tool artifacts in `tools/` via `./download.sh`
+- A real admin kubeconfig template at `kubeconfigs/k8s-admin.kubeconfig`
+- A valid `cluster.caFile` path in policy that exists on the bastion host
+- For policy-merge mode: access to `k8s-bastion-policy`
 
-## Architecture Overview
+### Prepare Bootstrap Inputs
 
-This toolkit has a **two-phase architecture** that separates machine setup from user configuration:
-
-1. **Machine Phase** (`bastion-bootstrap-machine`): Installs containerd, tools, and scripts
-2. **Users Phase** (`bastion-bootstrap-users`): Configures policy, groups, and kubeconfigs
-
-**Why the split?** The users phase requires `yq` to parse YAML files, but `yq` is not installed until the machine phase completes. This separation also allows you to:
-- Set up the machine without needing a policy file
-- Update machine and users independently
-- Render policy from a private repository after the machine phase installs `yq`
-
-## Configuration Modes
-
-This toolkit supports two configuration approaches:
-
-### Mode 1: Simple (Single Policy File)
-Edit `access-policy.yaml` directly in this repository for basic setups. Good for testing or simple deployments.
-
-### Mode 2: Policy Merge (Production)
-Uses a three-layer merge system (public + private + environment) for managing sensitive configuration separately from this public repository. 
-
-## Configuration Architecture
-
-### Mode 1: Simple (Single Policy File)
-
-Edit `access-policy.yaml` directly in this repository for basic setups.
-
-### Mode 2: Policy Merge (Recommended for Production)
-
-Uses a three-layer policy merge system for managing sensitive configuration separately:
-
-1. **Public Base** (`access-policy.yaml`) - Base structure in this repo
-2. **Private Base** (`k8s-bastion-policy/base.yaml`) - Sensitive configuration such as cluster URLs
-3. **Environment Overlay** (`k8s-bastion-policy/envs/<env>.yaml`) - Environment-specific settings
-
-**Merge precedence:** Environment > Private > Public
-
-**⚠️ IMPORTANT:** When using policy merge mode, never edit `access-policy.yaml` directly. Always edit files in your private `k8s-bastion-policy` repository.
-
-## Scripts
-
-### 1) `bastion_init.sh` / `bastion_reconcile.sh`
-
-**Main wrapper scripts that orchestrate the entire setup.**
-
-**`bastion_init.sh`** - First-time initialization:
-```bash
-sudo ./bastion_init.sh <environment>
-# Example: sudo ./bastion_init.sh prod
-```
-
-**`bastion_reconcile.sh`** - Update configuration:
-```bash
-sudo ./bastion_reconcile.sh <environment>
-# Example: sudo ./bastion_reconcile.sh prod
-```
-
-Both scripts execute in this order:
-1. **Machine setup** (`bastion-bootstrap-machine`) - Installs containerd, tools (including yq), scripts
-2. **Policy rendering** (`bastion-render-policy`) - Merges policy from private repo (requires yq from step 1)
-3. **Users setup** (`bastion-bootstrap-users`) - Configures groups, kubeconfigs, login profiles
-
-**⚠️ CRITICAL:** Machine setup runs BEFORE policy rendering to ensure `yq` is installed.
-
-**Environment argument is required** for both scripts.
-
-**What it does**
-- Installs containerd, tools (kubectl, helm, yq, etc.), and bastion scripts
-- Renders policy from private repository (after machine setup ensures yq is available)
-- Configures users, groups, and kubeconfigs
-- Stops/disables node services (kubelet/container runtime) if present
-- Removes node binaries and runtime/node state (only in --init mode)
-- Installs kubeconfigs to user home directories
-- Installs `/etc/profile.d/bastion-login.sh` for user login information
-- Verifies end state.
-
-**Running phases manually** (without wrapper):
-``` bash
-# 1. Machine setup (installs yq)
-sudo ./sbin/bastion-bootstrap-machine --init --source .
-
-# 2. Render policy (requires yq from step 1)
-sudo ./sbin/bastion-render-policy \
-  --policy-repo ../k8s-bastion-policy \
-  --env prod \
-  --init-repo .
-
-# 3. Users setup
-sudo ./sbin/bastion-bootstrap-users --init --source .
-```
-
-**⚠️ WARNING:** Do not run `bastion-render-policy` before `bastion-bootstrap-machine` - it requires yq which is installed by the machine phase.
-
-### 2) `bastion-render-policy` (Admin Script)
-
-Merges access policy from three layers: public base + private base + environment overlay.
-
-**What it does**
-- Merges `access-policy.yaml` (public) with `k8s-bastion-policy/base.yaml` (private)
-- Applies environment-specific overlay `k8s-bastion-policy/envs/<env>.yaml`
-- Writes merged result to `access-policy.yaml` in this repository
-- Records environment marker for tracking
-
-**⚠️ WARNING:** This overwrites `access-policy.yaml` in this repo. Never edit that file directly when using policy merge mode.
-
-**Usage**
+Before running bootstrap or reconcile workflows:
 
 ```bash
-# Basic usage
-sudo ./sbin/bastion-render-policy --policy-repo DIR --env ENV
-
-# With explicit paths
-sudo ./sbin/bastion-render-policy \
-  --policy-repo ../k8s-bastion-policy \
-  --env prod \
-  --init-repo .
+./download.sh
 ```
 
-**Required Arguments:**
-- `--policy-repo DIR` - Path to private policy repository
-- `--env ENV` - Environment name (e.g., prod, preprod)
+Make sure these inputs are ready:
 
-**Optional Arguments:**
-- `--init-repo DIR` - Path to this repository (auto-detected)
-- `--output FILE` - Output file (default: <init-repo>/access-policy.yaml)
-- `--env-marker FILE` - Marker file to record environment
+- `tools/` contains the artifacts used by `bastion-install-tools`
+- `kubeconfigs/k8s-admin.kubeconfig` contains a real cluster-admin kubeconfig template
+- `cluster.caFile` in the rendered policy points to a readable CA file on the bastion host
 
-**Expected Directory Structure:**
-```
-/workspace/
-├── k8s-bastion-init/              # This repository
-│   ├── bastion_init.sh
-│   ├── bastion_reconcile.sh
-│   └── access-policy.yaml         # Will be overwritten by render
-└── k8s-bastion-policy/            # Private repository
-    ├── base.yaml                  # Private base config
-    └── envs/
-        ├── prod.yaml              # Production overlay
-        └── preprod.yaml           # Pre-production overlay
-```
+### Required Operator Scheduling
 
-### 3) `bastion-kube-renew` (User Script)
+This repository does not install a service, cron job, or systemd timer for CSR processing.
 
-Generates/refreshes a **user kubeconfig** using the Kubernetes CSR API based on the user's Linux group membership.
+- Run `bastion-csr-approver` periodically so user renewals can complete
+- Run `bastion-csr-cleanup` periodically to remove old issued CSRs
 
-**What it does**
-- Reads user's `k8s-*` groups from the system.
-- Creates a CSR with CN=username, O=groups.
-- Waits for automated approval.
-- Builds a kubeconfig with embedded certificate.
-- Installs it to `~/.kube/config`.
-- Backs up existing kubeconfig: `*.bak.TIMESTAMP`.
+## Architecture And Modes
 
-**Usage**
+The toolkit has a two-phase architecture:
 
-``` bash
-# Run as regular user (not root)
-bastion-kube-renew
-```
+1. **Machine Phase** (`bastion-bootstrap-machine`) installs containerd, tools, and bastion scripts
+2. **Users Phase** (`bastion-bootstrap-users`) installs policy, groups, kubeconfigs, and the login profile
 
-**Requirements**
-- Must have a bootstrap kubeconfig at `~/.kube/bootstrap`
-- Must belong to at least one `k8s-*` group
-- User must exist in the access policy file
+The users phase depends on `yq`, so the machine phase must run first.
 
-**Important**
-- This script cannot be run as root.
-- Certificate is valid for 7 days by default (configurable in policy).
+### Mode 1: Simple Configuration
 
-### 4) `bastion-bootstrap-user-groups` (Admin Script)
+- Edit `access-policy.yaml` directly in this repository
+- Use direct machine and users bootstrap commands
+- Best for simple or self-contained deployments
 
-Bulk, idempotent management of users' supplementary Unix group memberships based on the access policy.
+### Mode 2: Policy Merge Configuration
 
-**What it does**
-- Reads users and groups from the access policy.
-- Creates groups if missing.
-- Ensures users are members of specified groups.
-- Does not create users (users must exist on system).
+- Keep sensitive cluster data and environment overlays in `k8s-bastion-policy`
+- Use `bastion-render-policy` or the wrapper scripts
+- Best for production workflows and separated policy management
 
-**Usage**
+Policy merge uses three layers:
 
-``` bash
-sudo bastion-bootstrap-user-groups [--policy FILE]
+1. Public base: `access-policy.yaml`
+2. Private base: `k8s-bastion-policy/base.yaml`
+3. Environment overlay: `k8s-bastion-policy/envs/<env>.yaml`
 
-# Default policy location: /etc/kubernetes/access-policy.yaml
+Merge precedence is `Environment > Private > Public`.
+
+When using policy-merge mode, never edit the rendered `access-policy.yaml` directly in this repository after rendering.
+
+### Private Policy Repository Structure
+
+The private repository should be organized like this:
+
+```text
+k8s-bastion-policy/
+├── base.yaml
+└── envs/
+    ├── prod.yaml
+    └── preprod.yaml
 ```
 
-**Input**
+- `base.yaml` contains the private base policy, such as real cluster endpoint data and shared groups
+- `envs/<env>.yaml` contains environment-specific overlays, such as user assignments and environment-only groups
 
-Groups and users are read from the policy file (`access-policy.yaml`):
+Example split:
 
 ```yaml
-groups:
-  k8s-developers:
-    namespaces:
-      - dev-namespace
+# k8s-bastion-policy/base.yaml
+cluster:
+  name: production-cluster
+  server: https://prod-k8s-api.internal:6443
+  caFile: /etc/kubernetes/pki/ca.crt
 
+groups:
+  k8s-production-admins:
+    namespaces:
+      - all
+```
+
+```yaml
+# k8s-bastion-policy/envs/prod.yaml
 users:
   alice:
     ensureGroups:
+      - k8s-production-admins
+  bob:
+    ensureGroups:
       - k8s-developers
+      - k8s-production-admins
 ```
 
-**Note:** This script is called automatically by `bastion-bootstrap-users`. You usually don't need to run it manually unless you want to update groups without running a full users setup.
+## Canonical Workflows
 
-### 5) `bastion-audit-kube-dirs` (Admin Script)
+### Mode 1: Initial Bootstrap
 
-Audits per-user kubeconfig directories.
+For simple setups where `access-policy.yaml` in this repository is the source of truth:
 
-**What it does**
-- Lists users with home directories under `/home`.
-- For each, reports whether `~/.kube` exists and prints its non-recursive contents.
-
-**Usage**
-
-``` bash
-sudo bastion-audit-kube-dirs [--home-prefix DIR] [--no-list]
-```
-
-**Options**
-- `--home-prefix DIR` - Scan homes under DIR (default: /home)
-- `--no-list` - Do not list directory contents
-
-### 6) `bastion-kubeconfig-expiry` (Admin Script)
-
-Helper script to inspect **client certificate expiration dates** for kubeconfigs (works with embedded certs or file-referenced certs).
-
-**Usage**
 ```bash
-bastion-kubeconfig-expiry
-bastion-kubeconfig-expiry ~/.kube
-bastion-kubeconfig-expiry ~/.kube/config
+vim access-policy.yaml
+sudo ./sbin/bastion-bootstrap-machine --init --source .
+sudo ./sbin/bastion-bootstrap-users --init --source .
 ```
 
-**Options**
-- `WARN_DAYS=30` (default: `30`) - Highlight kubeconfigs expiring in `<= WARN_DAYS`.
+### Mode 1: Reconcile Changes
 
-Example:
 ```bash
-WARN_DAYS=14 bastion-kubeconfig-expiry ~/.kube
+vim access-policy.yaml
+sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
+sudo ./sbin/bastion-bootstrap-users --reconcile --source .
 ```
 
+This updates:
 
-## Directory Layout (expected)
-
-- `./bin/` — user-facing scripts installed to `/usr/local/bin`
-- `./sbin/` — admin scripts installed to `/usr/local/sbin`
-- `./lib/` — shared library functions installed to `/usr/local/lib/bastion`
-- `./tools/` — downloaded tool binaries (kubectl, helm, k9s, jq, yq, etc.)
-- `./kubeconfigs/` — admin kubeconfig templates (k8s-admin.kubeconfig)
-- `./docs/` — documentation files
-- `bastion_init.sh` — wrapper: render policy + init bootstrap
-- `bastion_reconcile.sh` — wrapper: render policy + reconcile bootstrap
-- `access-policy.yaml` — central access policy (source or rendered)
-- `user-tools.txt` — list of tools available to all users
-- `admin-tools.txt` — list of tools available to k8s-admin group
-- `VERSION` — version file
-
-## User login notice (SSH only)
-
-The bastion displays login information automatically based on Unix group membership via:
-
+- `/etc/kubernetes/access-policy.yaml`
+- Linux groups and supplementary group membership
+- bootstrap kubeconfigs
+- admin kubeconfigs for users in `k8s-admin`
 - `/etc/profile.d/bastion-login.sh`
 
-On a **fresh interactive SSH login**, users see a short banner showing:
+### Mode 2: Initial Bootstrap
+
+For policy-merge setups with a private repository:
+
+```bash
+cd ../k8s-bastion-policy
+vim base.yaml
+vim envs/prod.yaml
+
+cd ../k8s-bastion-init
+sudo ./bastion_init.sh prod
+```
+
+`bastion_init.sh` runs these steps in order:
+
+1. `bastion-bootstrap-machine --init --source .`
+2. `bastion-render-policy --policy-repo ../k8s-bastion-policy --env <env> --init-repo .`
+3. `bastion-bootstrap-users --init --source .`
+
+### Mode 2: Reconcile Changes
+
+```bash
+cd ../k8s-bastion-policy
+vim envs/prod.yaml
+
+cd ../k8s-bastion-init
+sudo ./bastion_reconcile.sh prod
+```
+
+`bastion_reconcile.sh` runs these steps in order:
+
+1. `bastion-bootstrap-machine --reconcile --source .`
+2. `bastion-render-policy --policy-repo ../k8s-bastion-policy --env <env> --init-repo .`
+3. `bastion-bootstrap-users --reconcile --source .`
+
+After private policy changes, use the wrapper or render policy first. Do not run `bastion-bootstrap-users` directly against stale rendered policy.
+
+### Manual Policy-Render Flow
+
+If you need to run Mode 2 manually without wrappers:
+
+```bash
+sudo ./sbin/bastion-bootstrap-machine --init --source .
+sudo ./sbin/bastion-render-policy \
+  --policy-repo ../k8s-bastion-policy \
+  --env prod \
+  --init-repo .
+sudo ./sbin/bastion-bootstrap-users --init --source .
+```
+
+Do not run `bastion-render-policy` before the machine phase, because `yq` is installed during machine bootstrap.
+
+## Script Reference
+
+### Wrapper Scripts
+
+- **`bastion_init.sh`**: first-time Mode 2 initialization
+- **`bastion_reconcile.sh`**: Mode 2 update workflow
+
+These scripts assume:
+
+- `./download.sh` has already populated `tools/`
+- `../k8s-bastion-policy` exists for policy-merge mode
+- `kubeconfigs/k8s-admin.kubeconfig` is present in this repository
+
+### Core Bootstrap Scripts
+
+- **`bastion-bootstrap-machine`**: installs runtime, tools, libraries, and scripts
+- **`bastion-bootstrap-users`**: validates prerequisites, installs policy, applies user state, and verifies setup
+- **`bastion-render-policy`**: merges public, private, and environment policy layers and records `.policy-env`
+
+### Additional Admin Scripts
+
+- **`bastion-bootstrap-user-groups`**: creates groups and updates supplementary group membership from policy
+- **`bastion-bootstrap-kubeconfig`**: creates `~/.kube/bootstrap` for users defined in policy
+- **`bastion-bootstrap-admin-kubeconfig`**: installs admin kubeconfigs for users in the `k8s-admin` policy group
+- **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
+- **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
+- **`bastion-login-profile`**: generates the login banner and tool summary
+
+### User Script
+
+- **`bastion-kube-renew`**: renews a user certificate based on current Unix group membership
+
+Requirements:
+
+- `~/.kube/bootstrap` must exist
+- the user must belong to at least one `k8s-*` group, or whatever `csr.groupPrefix` is configured to match
+- the policy must contain valid `csr.*`, `cluster.name`, `cluster.server`, and `cluster.caFile` values
+- users should start a new login session after group changes before running `bastion-kube-renew`
+
+## Operator Inputs
+
+- `access-policy.yaml` - source policy in Mode 1, or rendered output in Mode 2
+- `kubeconfigs/k8s-admin.kubeconfig` - admin kubeconfig template copied to `k8s-admin` users
+- `tools/` - downloaded tool artifacts consumed by `bastion-install-tools`
+- `download.conf` - tool version and URL configuration for `download.sh`
+- `bastion_init.sh` and `bastion_reconcile.sh` - Mode 2 wrapper entry points
+
+## User Login Notice
+
+The bastion displays login information via `/etc/profile.d/bastion-login.sh`.
+
+On a fresh interactive SSH login, users see:
+
 - Kubernetes access status and certificate expiry
-- Available tools based on user/admin group membership
-- k8s-* groups the user belongs to
+- Available tools based on user and admin group membership
+- `k8s-*` groups the user belongs to
 
 Notes:
-- The message is shown only for interactive shells over SSH (`SSH_CONNECTION` is set).
-- Users must re-login to pick up group changes (or `source /etc/profile.d/bastion-login.sh`).
 
-## Typical Workflow
+- The message is shown only for interactive shells over SSH
+- Users must re-login to pick up group changes, or manually source `/etc/profile.d/bastion-login.sh`
 
-### Mode 1: Simple Configuration (Single Policy File)
-
-For basic setups where you edit `access-policy.yaml` directly:
-
-1. **Configure the policy**:
-   ```bash
-   vim access-policy.yaml
-   # Edit cluster settings, groups, users
-   ```
-
-2. **Bootstrap the bastion** (first time):
-   ```bash
-   sudo ./sbin/bastion-bootstrap-machine --init --source .
-   sudo ./sbin/bastion-bootstrap-users --init --source .
-   ```
-
-3. **Update configuration** (later):
-   ```bash
-   vim access-policy.yaml
-   sudo ./sbin/bastion-bootstrap-machine --reconcile --source .
-   sudo ./sbin/bastion-bootstrap-users --reconcile --source .
-   ```
-
-### Mode 2: Policy Merge Configuration (Production)
-
-For setups with sensitive configuration in a private repository:
-
-**Expected directory structure:**
-```
-/workspace/
-├── k8s-bastion-init/              # This repo
-└── k8s-bastion-policy/            # Private repo
-    ├── base.yaml                  # Private base config
-    └── envs/
-        ├── prod.yaml              # Production overlay
-        └── preprod.yaml           # Pre-production overlay
-```
-
-1. **Configure the private policy**:
-   ```bash
-   cd ../k8s-bastion-policy
-   vim base.yaml                    # Cluster settings, etc.
-   vim envs/prod.yaml               # Production users
-   ```
-
-2. **Bootstrap the bastion** (first time):
-   ```bash
-   cd ../k8s-bastion-init
-   sudo ./bastion_init.sh prod
-   ```
-
-3. **Update configuration** (later - ⚠️ CRITICAL WORKFLOW):
-   ```bash
-   cd ../k8s-bastion-policy
-   vim envs/prod.yaml               # Modify users
-   
-   cd ../k8s-bastion-init
-   sudo ./bastion_reconcile.sh prod
-   ```
-
-   **⚠️ NEVER run bootstrap directly after policy changes!** Always use the wrapper or render policy first.
-
-### What Each Mode Uses
-
-- **Mode 1** - Run `bastion-bootstrap-machine` and `bastion-bootstrap-users` directly against the repository policy file
-- **Mode 2** - Run `bastion_init.sh` or `bastion_reconcile.sh` so policy rendering happens before user configuration
-
-### User Certificate Renewal (Both Modes)
-
-Users renew their certificates independently of admin configuration:
+## Verification
 
 ```bash
-# Run as regular user (not root)
-bastion-kube-renew
-```
-
-**Note:** Users must re-run `bastion-kube-renew` after admin changes to their group memberships.
-
-### Verification
-
-```bash
-# Check access
 kubectl cluster-info
-
-# Check certificate expiry (admins)
 sudo bastion-kubeconfig-expiry
 ```
+
+For end-user renewal and access behavior, see `docs/k8s-users-management.md`.
+
+## Operator Runbook
+
+### First Bootstrap
+
+- run `./download.sh` or `make download`
+- verify `kubeconfigs/k8s-admin.kubeconfig` and policy inputs
+- use Mode 1 direct bootstrap commands or Mode 2 `bastion_init.sh`
+- verify `kubectl cluster-info` and `sudo bastion-kubeconfig-expiry`
+
+### After Policy Changes
+
+- **Mode 1**
+  - edit `access-policy.yaml`
+  - run `sudo ./sbin/bastion-bootstrap-machine --reconcile --source .`
+  - run `sudo ./sbin/bastion-bootstrap-users --reconcile --source .`
+- **Mode 2**
+  - edit `k8s-bastion-policy/base.yaml` or `k8s-bastion-policy/envs/<env>.yaml`
+  - run `sudo ./bastion_reconcile.sh <env>` or `make reconcile ENV=<env>`
+
+### New User Onboarding
+
+- create the Linux user on the bastion host
+- add the user and `ensureGroups` mapping in policy
+- reconcile the bastion
+- run `sudo bastion-bootstrap-kubeconfig --user <user>`
+- ask the user to start a new login session and run `bastion-kube-renew`
+
+### Group Membership Changes
+
+- update the policy mapping
+- reconcile the bastion
+- ask affected users to log out and back in
+- ask affected users to run `bastion-kube-renew`
+
+### Tool Updates
+
+- edit `download.conf`
+- run `./download.sh` or `make download`
+- run the machine reconcile step to install updated artifacts
+
+### Environment Verification
+
+- inspect `.policy-env` to confirm the last rendered environment in Mode 2
+- verify `/etc/kubernetes/access-policy.yaml` matches the intended state
+- verify `/etc/profile.d/bastion-login.sh` exists and has been regenerated when needed
+
+## Maintenance Cadence
+
+### Event-Driven Tasks
+
+- reconcile after policy changes
+- bootstrap a kubeconfig after adding a new user
+- ask users to renew after group membership changes
+- refresh tools after changing `download.conf`
+
+### Periodic Tasks
+
+- run `bastion-csr-approver` on a schedule
+- run `bastion-csr-cleanup` on a schedule
+- review certificate expiry with `sudo bastion-kubeconfig-expiry`
+
+### Manual Verification
+
+- confirm cluster connectivity with `kubectl cluster-info`
+- inspect user group state with `id -nG <user>`
+- inspect kube directories with `sudo bastion-audit-kube-dirs`
+- inspect the active rendered policy and `.policy-env` when troubleshooting Mode 2
 
 ## Troubleshooting
 
 ### Policy Rendering Issues
 
 **Error: Policy repository not found at: ../k8s-bastion-policy**
-- Ensure `k8s-bastion-policy` directory exists at the expected location (one directory up from k8s-bastion-init)
-- Check directory structure matches [Typical Workflow](#typical-workflow) section
+- Ensure `k8s-bastion-policy` exists one directory above `k8s-bastion-init`
+- Check the directory layout used in the canonical workflows
 
 **Error: Missing required environment argument**
 - `bastion_init.sh` and `bastion_reconcile.sh` require an environment argument
-- Usage: `sudo ./bastion_init.sh <environment>` (e.g., `prod`, `preprod`)
+- Example: `sudo ./bastion_init.sh prod`
 
 **Policy changes not applied**
-- Ensure machine setup completed successfully (check `yq` is installed: `which yq`)
-- Run `bastion_init.sh` or `bastion_reconcile.sh` which handles the correct order: machine → render → users
-- Do not run `bastion-bootstrap-users` directly after changing private policy without first rendering it
-- Check `.policy-env` file exists to confirm last rendered environment
+- Ensure machine setup completed successfully and `yq` is installed
+- Run `bastion_init.sh` or `bastion_reconcile.sh` so the order is machine -> render -> users
+- Do not run `bastion-bootstrap-users` directly after changing private policy without rendering first
+- Check `.policy-env` to confirm the last rendered environment
 
 ### General Issues
 
-- If `echo $KUBECONFIG` is empty, ensure:
-  - user is in the expected Unix group (`id -nG`)
-  - `/etc/profile.d/bastion-login.sh` exists
-  - user started a new login shell (re-login or `source /etc/profile.d/bastion-login.sh`)
-- If kubectl talks to `localhost:6443`, the kubeconfig’s `clusters[].cluster.server` is wrong; update to the real API endpoint (LB/DNS/IP).
+- If `echo $KUBECONFIG` is empty, ensure the user is in the expected Unix group, `/etc/profile.d/bastion-login.sh` exists, and the user started a new login shell
+- If `kubectl` talks to `localhost:6443`, the kubeconfig `clusters[].cluster.server` value is wrong; update it to the real API endpoint

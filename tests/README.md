@@ -22,6 +22,8 @@ Run all tests with a single command:
 
 ```bash
 ./tests/run-all.sh
+# or
+make test
 ```
 
 This will:
@@ -65,12 +67,16 @@ tests/
 
 ```bash
 ./tests/run-all.sh
+# or
+make test
 ```
 
 ### Run Tests Without Cleanup (for debugging)
 
 ```bash
 ./tests/run-all.sh --no-cleanup
+# or
+make test-no-cleanup
 ```
 
 Note: `--no-cleanup` preserves the container only on successful runs. On failure,
@@ -97,6 +103,8 @@ Then cleanup manually:
 ```bash
 # Setup container only
 ./tests/podman/setup.sh
+# or
+make test-setup
 
 # Run specific test
 ./tests/scenarios/test-full-init.sh
@@ -109,6 +117,8 @@ Then cleanup manually:
 
 # Cleanup
 ./tests/podman/cleanup.sh
+# or
+make test-cleanup
 ```
 
 ### Manual Testing in Container
