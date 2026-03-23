@@ -149,6 +149,7 @@ Run verification scripts from the host shell (not inside the container):
 - ✅ containerd installation and service startup
 - ✅ Tools installation (yq, kubectl, helm, jq)
 - ✅ Bastion scripts installation
+- ✅ CSR approver/cleanup systemd timers enabled and active
 - ✅ Library installation
 - ✅ Marker file creation
 

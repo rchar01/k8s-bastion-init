@@ -9,6 +9,7 @@ bastion-bootstrap-user-groups
 bastion-disable-user
 bastion-csr-approver
 bastion-csr-cleanup
+bastion-manage-csr-timers
 bastion-install-containerd
 bastion-install-tools
 bastion-kubeconfig-expiry

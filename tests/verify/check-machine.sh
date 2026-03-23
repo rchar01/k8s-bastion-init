@@ -51,7 +51,7 @@ check_tools() {
 check_scripts() {
 	log_info "Checking bastion scripts..."
 
-	local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy" "bastion-disable-user")
+	local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy" "bastion-disable-user" "bastion-manage-csr-timers")
 	local all_present=true
 
 	for script in "${scripts[@]}"; do
@@ -64,6 +64,32 @@ check_scripts() {
 	done
 
 	$all_present
+}
+
+# Check CSR timers
+check_csr_timers() {
+	log_info "Checking CSR systemd timers..."
+
+	local timers=("bastion-csr-approver.timer" "bastion-csr-cleanup.timer")
+	local all_ok=true
+
+	for timer in "${timers[@]}"; do
+		if podman exec "$CONTAINER_NAME" systemctl is-enabled "$timer" &>/dev/null; then
+			log_success "$timer is enabled"
+		else
+			log_fail "$timer is not enabled"
+			all_ok=false
+		fi
+
+		if podman exec "$CONTAINER_NAME" systemctl is-active "$timer" &>/dev/null; then
+			log_success "$timer is active"
+		else
+			log_fail "$timer is not active"
+			all_ok=false
+		fi
+	done
+
+	$all_ok
 }
 
 # Check marker files
@@ -87,6 +113,7 @@ main() {
 	check_containerd || failed=1
 	check_tools || failed=1
 	check_scripts || failed=1
+	check_csr_timers || failed=1
 	check_markers || failed=1
 
 	log_info "=== Machine Verification Complete ==="

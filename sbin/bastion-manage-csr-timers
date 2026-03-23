@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-manage-csr-timers"
+
+# --------------------------------------------------
+# Resolve bastion library location
+# --------------------------------------------------
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+# --------------------------------------------------
+# Defaults
+# --------------------------------------------------
+
+SYSTEMD_DIR="/etc/systemd/system"
+
+APPROVER_SERVICE="bastion-csr-approver.service"
+APPROVER_TIMER="bastion-csr-approver.timer"
+CLEANUP_SERVICE="bastion-csr-cleanup.service"
+CLEANUP_TIMER="bastion-csr-cleanup.timer"
+
+APPROVER_ON_BOOT="1min"
+APPROVER_ON_ACTIVE="2min"
+CLEANUP_ON_BOOT="10min"
+CLEANUP_ON_ACTIVE="6h"
+
+ACTION=""
+
+usage() {
+  cat <<EOF
+Usage:
+  bastion-manage-csr-timers --install [options]
+  bastion-manage-csr-timers --remove
+
+Installs or removes systemd units for bastion CSR approver and cleanup.
+
+Options:
+  --install                    Install/update and enable/start timers.
+  --remove                     Stop/disable timers and remove unit files.
+  --approver-on-boot DUR       Approver timer OnBootSec (default: ${APPROVER_ON_BOOT})
+  --approver-on-active DUR     Approver timer OnUnitActiveSec (default: ${APPROVER_ON_ACTIVE})
+  --cleanup-on-boot DUR        Cleanup timer OnBootSec (default: ${CLEANUP_ON_BOOT})
+  --cleanup-on-active DUR      Cleanup timer OnUnitActiveSec (default: ${CLEANUP_ON_ACTIVE})
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install)
+        ACTION="install"
+        shift
+        ;;
+      --remove)
+        ACTION="remove"
+        shift
+        ;;
+      --approver-on-boot)
+        APPROVER_ON_BOOT="$2"
+        shift 2
+        ;;
+      --approver-on-active)
+        APPROVER_ON_ACTIVE="$2"
+        shift 2
+        ;;
+      --cleanup-on-boot)
+        CLEANUP_ON_BOOT="$2"
+        shift 2
+        ;;
+      --cleanup-on-active)
+        CLEANUP_ON_ACTIVE="$2"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$ACTION" ]] || die "Specify --install or --remove"
+}
+
+write_approver_service() {
+  local dst="$1"
+  cat >"$dst" <<EOF
+[Unit]
+Description=Bastion CSR approver
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-csr-approver
+EOF
+}
+
+write_approver_timer() {
+  local dst="$1"
+  cat >"$dst" <<EOF
+[Unit]
+Description=Run bastion CSR approver periodically
+
+[Timer]
+OnBootSec=${APPROVER_ON_BOOT}
+OnUnitActiveSec=${APPROVER_ON_ACTIVE}
+Unit=${APPROVER_SERVICE}
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+write_cleanup_service() {
+  local dst="$1"
+  cat >"$dst" <<EOF
+[Unit]
+Description=Bastion CSR cleanup
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-csr-cleanup
+EOF
+}
+
+write_cleanup_timer() {
+  local dst="$1"
+  cat >"$dst" <<EOF
+[Unit]
+Description=Run bastion CSR cleanup periodically
+
+[Timer]
+OnBootSec=${CLEANUP_ON_BOOT}
+OnUnitActiveSec=${CLEANUP_ON_ACTIVE}
+Unit=${CLEANUP_SERVICE}
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+install_if_changed() {
+  local src="$1"
+  local dst="$2"
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    log_info "Unit unchanged: $dst"
+    return 1
+  fi
+
+  install -m 0644 "$src" "$dst"
+  log_info "Installed unit: $dst"
+  return 0
+}
+
+install_units() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+
+  write_approver_service "$tmp/$APPROVER_SERVICE"
+  write_approver_timer "$tmp/$APPROVER_TIMER"
+  write_cleanup_service "$tmp/$CLEANUP_SERVICE"
+  write_cleanup_timer "$tmp/$CLEANUP_TIMER"
+
+  install_if_changed "$tmp/$APPROVER_SERVICE" "$SYSTEMD_DIR/$APPROVER_SERVICE" || true
+  install_if_changed "$tmp/$APPROVER_TIMER" "$SYSTEMD_DIR/$APPROVER_TIMER" || true
+  install_if_changed "$tmp/$CLEANUP_SERVICE" "$SYSTEMD_DIR/$CLEANUP_SERVICE" || true
+  install_if_changed "$tmp/$CLEANUP_TIMER" "$SYSTEMD_DIR/$CLEANUP_TIMER" || true
+
+  log_info "Reloading systemd daemon"
+  systemctl daemon-reload
+
+  log_info "Enabling and starting timers"
+  systemctl enable --now "$APPROVER_TIMER"
+  systemctl enable --now "$CLEANUP_TIMER"
+
+  log_info "CSR timers installed and active."
+}
+
+remove_unit_file() {
+  local unit="$1"
+  if [[ -f "$SYSTEMD_DIR/$unit" ]]; then
+    rm -f "$SYSTEMD_DIR/$unit"
+    log_info "Removed unit: $SYSTEMD_DIR/$unit"
+  else
+    log_debug "Unit not present: $SYSTEMD_DIR/$unit"
+  fi
+}
+
+remove_units() {
+  log_info "Stopping and disabling timers"
+  systemctl disable --now "$APPROVER_TIMER" >/dev/null 2>&1 || true
+  systemctl disable --now "$CLEANUP_TIMER" >/dev/null 2>&1 || true
+
+  remove_unit_file "$APPROVER_TIMER"
+  remove_unit_file "$APPROVER_SERVICE"
+  remove_unit_file "$CLEANUP_TIMER"
+  remove_unit_file "$CLEANUP_SERVICE"
+
+  log_info "Reloading systemd daemon"
+  systemctl daemon-reload
+
+  log_info "CSR timer units removed."
+}
+
+main() {
+  require_root
+
+  need_cmd systemctl
+  need_cmd install
+  need_cmd cmp
+  need_cmd mktemp
+  need_cmd rm
+
+  parse_args "$@"
+
+  case "$ACTION" in
+    install)
+      install_units
+      ;;
+    remove)
+      remove_units
+      ;;
+  esac
+}
+
+main "$@"

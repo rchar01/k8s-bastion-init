@@ -19,7 +19,7 @@ Users do not get long-lived static kubeconfig credentials.
 1. Admin bootstraps a user kubeconfig (`~/.kube/bootstrap`).
 2. User runs `bastion-kube-renew`.
 3. User CSR is submitted to Kubernetes.
-4. `bastion-csr-approver` runs as a periodic one-shot job and approves valid CSRs.
+4. `bastion-csr-approver` runs via systemd timer and approves valid CSRs.
 5. User receives a signed certificate and `~/.kube/config` is rebuilt.
 6. Access expires automatically when the certificate expires.
 
@@ -100,7 +100,13 @@ It does not re-check whether the user appears under `.users` in policy or whethe
 
 If checks pass, CSR is approved.
 
-Because it is a one-shot command, run it periodically via cron or a systemd timer.
+Because it is a one-shot command, bastion bootstrap installs a systemd timer for it by default.
+
+If you need to remove default CSR scheduling units:
+
+```bash
+sudo bastion-manage-csr-timers --remove
+```
 
 ## Cleanup Behavior
 

@@ -149,6 +149,7 @@ apply_users_state() {
   need_cmd bastion-bootstrap-kubeconfig
   need_cmd bastion-bootstrap-admin-kubeconfig
   need_cmd bastion-login-profile
+  need_cmd bastion-manage-csr-timers
 
   log_info "Ensuring user groups"
   bastion-bootstrap-user-groups --policy "$POLICY_DST"
@@ -166,6 +167,9 @@ apply_users_state() {
     --init \
     --user-tools "$SOURCE_DIR/user-tools.txt" \
     --admin-tools "$SOURCE_DIR/admin-tools.txt"
+
+  log_info "Installing CSR approver and cleanup timers"
+  bastion-manage-csr-timers --install
 
   # Mark users as initialized
   touch "$USERS_INIT_MARKER"

@@ -53,7 +53,7 @@ Also make sure:
 
 - `kubeconfigs/k8s-admin.kubeconfig` contains a real admin kubeconfig template for the target cluster
 - `cluster.caFile` in your policy points to a readable CA certificate on the bastion host
-- You plan to run `bastion-csr-approver` and `bastion-csr-cleanup` periodically via cron or a systemd timer
+- Bootstrap will install and enable systemd timers for `bastion-csr-approver` and `bastion-csr-cleanup` by default
 
 ## Overview
 
@@ -202,6 +202,7 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `./bastion_init.sh <env>` - production bootstrap wrapper for Mode 2
 - `./bastion_reconcile.sh <env>` - production reconcile wrapper for Mode 2
 - `sudo bastion-disable-user --user <user>` - disable bastion-managed Kubernetes access for a target user
+- `sudo bastion-manage-csr-timers --remove` - remove default CSR approver/cleanup systemd timers
 - `bastion-kube-renew` - user self-service certificate renewal
 - `make help` - list convenience targets for local workflows and tests
 
@@ -259,6 +260,7 @@ Common changes include:
 - Writes policy and kube-related files under `/etc/kubernetes`
 - Installs login profile under `/etc/profile.d`
 - Installs and manages `containerd` via systemd
+- Installs and enables CSR processing timers under `/etc/systemd/system`
 
 ## Security Model
 

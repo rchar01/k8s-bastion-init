@@ -43,10 +43,16 @@ Make sure these inputs are ready:
 
 ### Required Operator Scheduling
 
-This repository does not install a service, cron job, or systemd timer for CSR processing.
+Bootstrap and reconcile install and enable systemd timers for CSR processing by default.
 
-- Run `bastion-csr-approver` periodically so user renewals can complete
-- Run `bastion-csr-cleanup` periodically to remove old issued CSRs
+- `bastion-csr-approver.timer`: `OnBootSec=1min`, `OnUnitActiveSec=2min`
+- `bastion-csr-cleanup.timer`: `OnBootSec=10min`, `OnUnitActiveSec=6h`
+
+To remove these timers, run:
+
+```bash
+sudo bastion-manage-csr-timers --remove
+```
 
 ## Architecture And Modes
 
@@ -235,6 +241,7 @@ These scripts assume:
 - **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
+- **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
 
 ### User Script
 
@@ -332,8 +339,21 @@ Use these checks before declaring the bastion ready for general use.
 
 ## Scheduling Examples
 
-This repository does not install timers or cron jobs automatically, but these
-examples are a good production starting point.
+Default timers are installed automatically during bootstrap and reconcile.
+
+To reinstall defaults manually:
+
+```bash
+sudo bastion-manage-csr-timers --install
+```
+
+To remove all CSR timer units:
+
+```bash
+sudo bastion-manage-csr-timers --remove
+```
+
+Use custom schedules only when you need non-default cadence.
 
 ### Cron Example
 
@@ -461,8 +481,8 @@ WantedBy=timers.target
 
 ### Periodic Tasks
 
-- run `bastion-csr-approver` on a schedule
-- run `bastion-csr-cleanup` on a schedule
+- verify `bastion-csr-approver.timer` is enabled and active
+- verify `bastion-csr-cleanup.timer` is enabled and active
 - review certificate expiry with `sudo bastion-kubeconfig-expiry`
 
 ### Manual Verification

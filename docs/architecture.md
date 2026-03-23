@@ -30,6 +30,7 @@ policy-driven groups, and Kubernetes certificate workflows fit together.
   group claims during renewal
 - **Certificate management** - bootstrap kubeconfigs, CSR submission, approval,
   cleanup, and short-lived kubeconfig generation
+- **Systemd timers** - default scheduling for CSR approver and cleanup jobs
 - **Kubernetes CSR API** - signs client certificates after bastion-side checks
 
 ## Control Flow
