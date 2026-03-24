@@ -4,6 +4,19 @@ This file gives a short, release-oriented view of what changed between versions.
 
 ## Unreleased
 
+## 1.5.0
+
+Compared with `1.4.0`:
+
+- hardens admin command execution by installing `/usr/local/sbin/bastion-*` with restricted permissions and root-only guards
+- adds sudo `secure_path` bootstrap support so `sudo bastion-*` can resolve admin commands reliably
+- installs service kubeconfig at `/etc/kubernetes/admin.kubeconfig` and wires CSR timer services to use it via `KUBECONFIG`
+- fixes bootstrap kubeconfig ownership logic to use each user's real primary group instead of assuming group name equals username
+- improves RHEL-family dependency install behavior to avoid `curl`/`curl-minimal` conflicts during containerd bootstrap
+- standardizes bastion CA guidance to `/etc/kubernetes/ca.crt` and documents why `/etc/kubernetes/pki/ca.crt` is unsafe for init cleanup flows
+- converts public `access-policy.yaml` into a clean merge baseline and moves dummy policy examples into docs
+- adds dedicated hardening verification tests and includes them in `./tests/run-all.sh`
+
 ## 1.4.0
 
 Compared with `1.3.0`:

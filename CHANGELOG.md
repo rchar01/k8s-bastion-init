@@ -7,6 +7,27 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-03-24
+
+### Added
+- Add hardening verification script `tests/verify/check-hardening.sh` and include it in `tests/run-all.sh`.
+- Add bootstrap installation of `/etc/kubernetes/admin.kubeconfig` for service-side Kubernetes operations.
+- Add sudo secure path configuration at `/etc/sudoers.d/bastion-path` during machine bootstrap.
+
+### Changed
+- Install admin scripts under `/usr/local/sbin` with mode `0750` to reduce non-admin execution surface.
+- Enforce root-only execution for admin operational commands (audit, CSR handlers, render, expiry, version).
+- Configure CSR timer services to run with `KUBECONFIG=/etc/kubernetes/admin.kubeconfig`.
+- Normalize PATH in wrappers and shared library to include `/usr/local/bin` and `/usr/local/sbin` in sudo/root contexts.
+- Use `/etc/kubernetes/ca.crt` as the documented bastion default for `cluster.caFile` and update operator docs accordingly.
+- Convert public `access-policy.yaml` into a merge baseline (`groups: {}`, `users: {}`) and move dummy examples into documentation.
+
+### Fixed
+- Fix bootstrap kubeconfig ownership setup for users whose primary group differs from username.
+- Fix `bastion-install-containerd` dependency install to avoid `curl` vs `curl-minimal` package conflicts.
+- Fix `bastion-manage-csr-timers` cleanup trap failure under `set -u`.
+- Fix `bastion-audit-kube-dirs --no-list` to return success instead of failing due to shell truthiness.
+
 ## [1.4.0] - 2026-03-11
 
 ### Added
