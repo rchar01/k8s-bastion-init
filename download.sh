@@ -6,8 +6,8 @@ BIN_DIR="${BIN_DIR:-./tools}"
 WGET_BIN="${WGET_BIN:-wget}"
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
-	echo "Missing download.conf"
-	exit 1
+  echo "Missing download.conf"
+  exit 1
 fi
 
 source "$CONFIG_FILE"
@@ -19,24 +19,24 @@ mkdir -p "$BIN_DIR"
 # --------------------------------------------------
 
 if [[ -z "${ARCH:-}" ]]; then
-	SYS_ARCH="$(uname -m)"
+  SYS_ARCH="$(uname -m)"
 else
-	SYS_ARCH="$ARCH"
+  SYS_ARCH="$ARCH"
 fi
 
 case "$SYS_ARCH" in
-x86_64 | amd64)
-	ARCH="amd64"
-	ARCH_X86_64="x86_64"
-	;;
-aarch64 | arm64)
-	ARCH="arm64"
-	ARCH_X86_64="aarch64"
-	;;
-*)
-	echo "Unsupported architecture: $SYS_ARCH"
-	exit 1
-	;;
+  x86_64 | amd64)
+    ARCH="amd64"
+    ARCH_X86_64="x86_64"
+    ;;
+  aarch64 | arm64)
+    ARCH="arm64"
+    ARCH_X86_64="aarch64"
+    ;;
+  *)
+    echo "Unsupported architecture: $SYS_ARCH"
+    exit 1
+    ;;
 esac
 
 echo "==> Using ARCH=${ARCH}"
@@ -48,51 +48,51 @@ cd "$BIN_DIR"
 # --------------------------------------------------
 
 resolve_url() {
-	local template_name="$1"
-	local template_value="${!template_name:-}"
+  local template_name="$1"
+  local template_value="${!template_name:-}"
 
-	if [[ -z "$template_value" ]]; then
-		echo "Missing URL template: $template_name" >&2
-		exit 1
-	fi
+  if [[ -z "$template_value" ]]; then
+    echo "Missing URL template: $template_name" >&2
+    exit 1
+  fi
 
-	eval "printf '%s\\n' \"$template_value\""
+  eval "printf '%s\\n' \"$template_value\""
 }
 
 download() {
-	local url="$1"
-	local file
-	file="$(basename "$url")"
-	local tmp="${file}.part"
+  local url="$1"
+  local file
+  file="$(basename "$url")"
+  local tmp="${file}.part"
 
-	#  echo "==> Downloading ${file}"
+  #  echo "==> Downloading ${file}"
 
-	rm -f "$tmp"
+  rm -f "$tmp"
 
-	"$WGET_BIN" \
-		--quiet \
-		--https-only \
-		--tries=5 \
-		--timeout=30 \
-		--retry-connrefused \
-		--waitretry=2 \
-		--show-progress \
-		-O "$tmp" "$url"
+  "$WGET_BIN" \
+    --quiet \
+    --https-only \
+    --tries=5 \
+    --timeout=30 \
+    --retry-connrefused \
+    --waitretry=2 \
+    --show-progress \
+    -O "$tmp" "$url"
 
-	mv "$tmp" "$file"
+  mv "$tmp" "$file"
 
-	validate_archive "$file"
+  validate_archive "$file"
 }
 
 validate_archive() {
-	local f="$1"
+  local f="$1"
 
-	case "$f" in
-	*.tgz | *.tar.gz)
-		#     echo "    validating gzip archive..."
-		gzip -t "$f"
-		;;
-	esac
+  case "$f" in
+    *.tgz | *.tar.gz)
+      #     echo "    validating gzip archive..."
+      gzip -t "$f"
+      ;;
+  esac
 }
 
 # --------------------------------------------------

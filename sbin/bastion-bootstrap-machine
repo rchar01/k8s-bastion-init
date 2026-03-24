@@ -9,7 +9,7 @@ PROGRAM_NAME="bastion-bootstrap-machine"
 # --------------------------------------------------
 
 usage() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage:
   bastion-bootstrap-machine --init --source DIR
   bastion-bootstrap-machine --reconcile --source DIR
@@ -35,13 +35,21 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --init)
-        MODE="init"; shift ;;
+        MODE="init"
+        shift
+        ;;
       --reconcile)
-        MODE="reconcile"; shift ;;
+        MODE="reconcile"
+        shift
+        ;;
       --source)
-        SOURCE_DIR="$2"; shift 2 ;;
-      -h|--help)
-        usage; exit 0 ;;
+        SOURCE_DIR="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
       *)
         echo "ERROR: Unknown argument: $1" >&2
         usage
@@ -50,8 +58,16 @@ parse_args() {
     esac
   done
 
-  [[ -n "$MODE" ]] || { echo "ERROR: Choose --init or --reconcile" >&2; usage; exit 1; }
-  [[ -n "$SOURCE_DIR" ]] || { echo "ERROR: --source is required" >&2; usage; exit 1; }
+  [[ -n "$MODE" ]] || {
+    echo "ERROR: Choose --init or --reconcile" >&2
+    usage
+    exit 1
+  }
+  [[ -n "$SOURCE_DIR" ]] || {
+    echo "ERROR: --source is required" >&2
+    usage
+    exit 1
+  }
 
   SOURCE_DIR="$(readlink -f "$SOURCE_DIR")"
 }
@@ -71,10 +87,13 @@ SUDOERS_PATH_FILE="/etc/sudoers.d/bastion-path"
 # Helpers (no shared libs yet)
 # --------------------------------------------------
 
-die_plain() { echo "ERROR: $*" >&2; exit 1; }
+die_plain() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
 
 need_cmd_plain() {
-  command -v "$1" >/dev/null 2>&1 || die_plain "Missing command: $1"
+  command -v "$1" > /dev/null 2>&1 || die_plain "Missing command: $1"
 }
 
 # Install/copy only if different (cmp). Keeps idempotency.
@@ -99,7 +118,8 @@ install_tree_dir() {
   for f in "$src_dir"/$pattern; do
     [[ -e "$f" ]] || continue
     any=1
-    local base; base="$(basename "$f")"
+    local base
+    base="$(basename "$f")"
     if install_file_if_changed "$f" "$dst_dir/$base" "$mode"; then
       log_info "Installed: $dst_dir/$base"
     else
@@ -113,7 +133,7 @@ install_tree_dir() {
 node_artifacts_present() {
   [[ -d /var/lib/kubelet ]] && return 0
   [[ -d /etc/kubernetes/pki ]] && return 0
-  command -v kubelet >/dev/null 2>&1 && return 0
+  command -v kubelet > /dev/null 2>&1 && return 0
   return 1
 }
 
@@ -126,8 +146,8 @@ cleanup_node_if_needed() {
   log_warn "Node artifacts detected — performing cleanup (containerd will be reinstalled)."
 
   # Stop best-effort
-  systemctl stop kubelet containerd >/dev/null 2>&1 || true
-  systemctl disable kubelet containerd >/dev/null 2>&1 || true
+  systemctl stop kubelet containerd > /dev/null 2>&1 || true
+  systemctl disable kubelet containerd > /dev/null 2>&1 || true
 
   # Remove common node state
   rm -rf \
@@ -139,13 +159,13 @@ cleanup_node_if_needed() {
     /run/containerd
 
   # Remove common node config (keep /etc/kubernetes itself, we manage policy there)
-  rm -rf /etc/kubernetes/pki /etc/kubernetes/manifests >/dev/null 2>&1 || true
+  rm -rf /etc/kubernetes/pki /etc/kubernetes/manifests > /dev/null 2>&1 || true
   rm -f \
     /etc/kubernetes/admin.conf \
     /etc/kubernetes/kubelet.conf \
     /etc/kubernetes/controller-manager.conf \
     /etc/kubernetes/scheduler.conf \
-    /etc/kubernetes/bootstrap-kubelet.conf >/dev/null 2>&1 || true
+    /etc/kubernetes/bootstrap-kubelet.conf > /dev/null 2>&1 || true
 
   # Remove common node binaries (do not remove kubectl)
   rm -f \
@@ -154,7 +174,7 @@ cleanup_node_if_needed() {
     /usr/local/bin/crictl \
     /usr/local/bin/containerd \
     /usr/local/bin/ctr \
-    /usr/local/bin/nerdctl >/dev/null 2>&1 || true
+    /usr/local/bin/nerdctl > /dev/null 2>&1 || true
 
   rm -f \
     /usr/bin/kubelet \
@@ -162,7 +182,7 @@ cleanup_node_if_needed() {
     /usr/bin/crictl \
     /usr/bin/containerd \
     /usr/bin/ctr \
-    /usr/bin/nerdctl >/dev/null 2>&1 || true
+    /usr/bin/nerdctl > /dev/null 2>&1 || true
 
   log_info "Node cleanup complete."
 }
@@ -170,12 +190,12 @@ cleanup_node_if_needed() {
 read_source_version() {
   local vf="$SOURCE_DIR/VERSION"
   [[ -f "$vf" ]] || die_plain "Missing VERSION file in source dir: $vf"
-  tr -d ' \t\r\n' <"$vf"
+  tr -d ' \t\r\n' < "$vf"
 }
 
 read_installed_version() {
   if [[ -f "$INSTALLED_VERSION_FILE" ]]; then
-    tr -d ' \t\r\n' <"$INSTALLED_VERSION_FILE"
+    tr -d ' \t\r\n' < "$INSTALLED_VERSION_FILE"
   else
     echo ""
   fi
@@ -222,9 +242,10 @@ install_runtime() {
   install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0750" "*"
 
   # Record installed version
-  local src_ver; src_ver="$(read_source_version)"
+  local src_ver
+  src_ver="$(read_source_version)"
   install -d "$LIB_DST"
-  printf '%s\n' "$src_ver" >"$INSTALLED_VERSION_FILE"
+  printf '%s\n' "$src_ver" > "$INSTALLED_VERSION_FILE"
   chmod 0644 "$INSTALLED_VERSION_FILE"
   log_info "Installed bastion version: $src_ver"
 }
@@ -233,10 +254,10 @@ install_sudo_secure_path() {
   local tmp
   tmp="$(mktemp)"
 
-  printf '%s\n' 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' >"$tmp"
+  printf '%s\n' 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' > "$tmp"
 
-  if command -v visudo >/dev/null 2>&1; then
-    visudo -cf "$tmp" >/dev/null || die "Generated sudoers config failed validation"
+  if command -v visudo > /dev/null 2>&1; then
+    visudo -cf "$tmp" > /dev/null || die "Generated sudoers config failed validation"
   else
     log_warn "visudo not found; installing sudoers path config without validation"
   fi

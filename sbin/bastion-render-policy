@@ -11,13 +11,25 @@ resolve_lib_dir() {
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
   # Installed (preferred)
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo "/usr/local/lib/bastion"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo "/usr/local/lib/bastion"
+    return
+  }
   # Legacy installed
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo "/usr/lib/bastion"; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo "/usr/lib/bastion"
+    return
+  }
   # Repo/bootstrap layout: ../lib contains log.sh
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
   # Container-mounted repo
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "ERROR: bastion library not found" >&2
   exit 1
@@ -32,7 +44,7 @@ source "${LIB_DIR}/common.sh"
 # Usage
 # --------------------------------------------------
 usage() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage:
   bastion-render-policy --policy-repo DIR --env ENV [--init-repo DIR] [--output FILE] [--env-marker FILE]
 
@@ -72,12 +84,30 @@ ENV_MARKER=""
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --policy-repo) POLICY_REPO="$2"; shift 2 ;;
-      --env) ENVIRONMENT="$2"; shift 2 ;;
-      --init-repo) INIT_REPO="$2"; shift 2 ;;
-      --output) OUTPUT_FILE="$2"; shift 2 ;;
-      --env-marker) ENV_MARKER="$2"; shift 2 ;;
-      -h|--help) usage; exit 0 ;;
+      --policy-repo)
+        POLICY_REPO="$2"
+        shift 2
+        ;;
+      --env)
+        ENVIRONMENT="$2"
+        shift 2
+        ;;
+      --init-repo)
+        INIT_REPO="$2"
+        shift 2
+        ;;
+      --output)
+        OUTPUT_FILE="$2"
+        shift 2
+        ;;
+      --env-marker)
+        ENV_MARKER="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
       *) die "Unknown argument: $1" ;;
     esac
   done
@@ -166,7 +196,7 @@ render_policy() {
 
   # Record env marker (idempotent)
   install -d "$(dirname "$ENV_MARKER")"
-  if [[ -f "$ENV_MARKER" ]] && grep -qx "$ENVIRONMENT" "$ENV_MARKER" 2>/dev/null; then
+  if [[ -f "$ENV_MARKER" ]] && grep -qx "$ENVIRONMENT" "$ENV_MARKER" 2> /dev/null; then
     log_debug "Env marker unchanged: $ENV_MARKER"
   else
     printf '%s\n' "$ENVIRONMENT" > "$ENV_MARKER"

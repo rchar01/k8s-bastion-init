@@ -11,10 +11,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -92,7 +104,7 @@ log_debug "Generating CSR"
 openssl req -new -newkey rsa:2048 -nodes \
   -keyout "$key" \
   -out "$csr" \
-  -subj "$SUBJ" >/dev/null 2>&1
+  -subj "$SUBJ" > /dev/null 2>&1
 
 csr_name="${USER_NAME}-$(date +%s)"
 
@@ -102,7 +114,7 @@ csr_name="${USER_NAME}-$(date +%s)"
 
 log_info "Submitting CSR: ${csr_name}"
 
-kubectl --kubeconfig="$BOOTSTRAP" apply -f - >/dev/null <<EOF
+kubectl --kubeconfig="$BOOTSTRAP" apply -f - > /dev/null << EOF
 apiVersion: certificates.k8s.io/v1
 kind: CertificateSigningRequest
 metadata:
@@ -123,7 +135,7 @@ cert=""
 for _ in {1..120}; do
   cert=$(kubectl --kubeconfig="$BOOTSTRAP" \
     get csr "$csr_name" \
-    -o jsonpath='{.status.certificate}' 2>/dev/null || true)
+    -o jsonpath='{.status.certificate}' 2> /dev/null || true)
 
   [[ -n "$cert" ]] && break
   sleep 2
@@ -159,20 +171,20 @@ kubectl config --kubeconfig="$KUBECONFIG_OUT" \
   set-cluster "$cluster" \
   --server="$server" \
   --certificate-authority="$ca" \
-  --embed-certs=true >/dev/null
+  --embed-certs=true > /dev/null
 
 kubectl config --kubeconfig="$KUBECONFIG_OUT" \
   set-credentials "$USER_NAME" \
   --client-certificate="${tmp}/cert.pem" \
   --client-key="$key" \
-  --embed-certs=true >/dev/null
+  --embed-certs=true > /dev/null
 
 kubectl config --kubeconfig="$KUBECONFIG_OUT" \
   set-context "$cluster" \
   --cluster="$cluster" \
-  --user="$USER_NAME" >/dev/null
+  --user="$USER_NAME" > /dev/null
 
 kubectl config --kubeconfig="$KUBECONFIG_OUT" \
-  use-context "$cluster" >/dev/null
+  use-context "$cluster" > /dev/null
 
 log_info "✔ Kubernetes access renewed successfully"

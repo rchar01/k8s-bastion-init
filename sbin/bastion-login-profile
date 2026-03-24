@@ -14,10 +14,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -33,7 +45,7 @@ source "${LIB_DIR}/common.sh"
 # --------------------------------------------------
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-login-profile --init --user-tools FILE --admin-tools FILE
   bastion-login-profile --reload --user-tools FILE --admin-tools FILE
@@ -73,7 +85,7 @@ parse_args() {
         ADMIN_TOOLS="$2"
         shift 2
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -109,7 +121,7 @@ generate_profile() {
   local tmp
   tmp="$(mktemp)"
 
-  cat >"$tmp" <<EOF
+  cat > "$tmp" << EOF
 # Managed by bastion-login-profile
 # Generated on $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

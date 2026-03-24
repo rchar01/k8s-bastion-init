@@ -12,13 +12,25 @@ resolve_lib_dir() {
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
   # Installed (preferred)
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
   # Legacy installed
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
   # Repo/bootstrap layout (../lib contains log.sh)
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
   # Container-mounted repo
-  [[ -f /bastion/lib/log.sh ]] && { echo /bastion/lib; return; }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo /bastion/lib
+    return
+  }
 
   echo "ERROR: bastion library not found" >&2
   exit 1
@@ -46,7 +58,7 @@ tar_containerd_version() {
 }
 
 installed_containerd_version() {
-  command -v /usr/local/bin/containerd >/dev/null 2>&1 \
+  command -v /usr/local/bin/containerd > /dev/null 2>&1 \
     && /usr/local/bin/containerd --version | awk '{print $3}' | sed 's/^v//' \
     || true
 }
@@ -59,7 +71,7 @@ local_runc_version() {
 }
 
 installed_runc_version() {
-  command -v /usr/local/sbin/runc >/dev/null 2>&1 \
+  command -v /usr/local/sbin/runc > /dev/null 2>&1 \
     && /usr/local/sbin/runc --version | head -n1 | awk '{print $3}' | sed 's/^v//' \
     || true
 }
@@ -72,20 +84,20 @@ install_dependencies() {
 
   # Avoid curl package conflicts on RHEL-family hosts.
   # If curl is already installed, keep using it; otherwise prefer curl-minimal.
-  if rpm -q curl >/dev/null 2>&1; then
+  if rpm -q curl > /dev/null 2>&1; then
     curl_pkg="curl"
-  elif rpm -q curl-minimal >/dev/null 2>&1; then
+  elif rpm -q curl-minimal > /dev/null 2>&1; then
     curl_pkg="curl-minimal"
   fi
 
-  dnf install -y iproute iptables tar gzip "$curl_pkg" >/dev/null
+  dnf install -y iproute iptables tar gzip "$curl_pkg" > /dev/null
 }
 
 check_artifacts() {
   log_info "Checking required artifacts..."
-  ls ${BIN_DIR}/containerd-*.tar.gz >/dev/null
-  ls ${BIN_DIR}/runc.* >/dev/null
-  ls ${BIN_DIR}/cni-plugins-linux-*.tgz >/dev/null
+  ls ${BIN_DIR}/containerd-*.tar.gz > /dev/null
+  ls ${BIN_DIR}/runc.* > /dev/null
+  ls ${BIN_DIR}/cni-plugins-linux-*.tgz > /dev/null
 }
 
 install_containerd_if_needed() {
@@ -140,8 +152,8 @@ configure_containerd() {
 
   if ! grep -Eq '^\s*SystemdCgroup\s*=\s*true\s*$' /etc/containerd/config.toml; then
     sed -i -E 's/^\s*SystemdCgroup\s*=.*/SystemdCgroup = true/' \
-      /etc/containerd/config.toml || \
-      echo "SystemdCgroup = true" >> /etc/containerd/config.toml
+      /etc/containerd/config.toml \
+      || echo "SystemdCgroup = true" >> /etc/containerd/config.toml
     changed=1
   fi
 
@@ -151,7 +163,7 @@ configure_containerd() {
 install_systemd_service() {
   log_info "Installing systemd service"
 
-  cat >/etc/systemd/system/containerd.service <<'EOF'
+  cat > /etc/systemd/system/containerd.service << 'EOF'
 [Unit]
 Description=containerd container runtime
 After=network.target
@@ -184,7 +196,7 @@ validate() {
   /usr/local/bin/containerd --version
 
   # containerd may take a moment to create its socket after systemd starts it.
-  systemctl --no-pager is-active containerd >/dev/null
+  systemctl --no-pager is-active containerd > /dev/null
 
   local i
   for i in $(seq 1 20); do

@@ -11,10 +11,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -33,7 +45,7 @@ HOME_PREFIX="/home"
 SHOW_CONTENTS=1
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-audit-kube-dirs [options]
 
@@ -54,7 +66,7 @@ parse_args() {
         SHOW_CONTENTS=0
         shift
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -84,7 +96,7 @@ list_kube_dir() {
   [[ "$SHOW_CONTENTS" -eq 1 ]] || return 0
 
   local listing
-  listing="$(ls -la "$dir" 2>/dev/null | sed 's/[[:space:]]\+/ /g' | tail -n +2 || true)"
+  listing="$(ls -la "$dir" 2> /dev/null | sed 's/[[:space:]]\+/ /g' | tail -n +2 || true)"
 
   if [[ -n "$listing" ]]; then
     echo "$listing" | sed 's/^/  /'
@@ -104,7 +116,7 @@ audit_users() {
     local kube_dir="$home/.kube"
 
     if [[ -d "$kube_dir" ]]; then
-      if [[ -z "$(ls -A "$kube_dir" 2>/dev/null || true)" ]]; then
+      if [[ -z "$(ls -A "$kube_dir" 2> /dev/null || true)" ]]; then
         print_row "$user" "$home" "(exists; empty)"
       else
         print_row "$user" "$home" "(exists)"

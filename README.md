@@ -111,6 +111,18 @@ For exact bootstrap, reconcile, production rollout, and operator runbook procedu
 # Download tool artifacts
 make download
 
+# Format shell scripts in-place
+make fmt-shell
+
+# Check shell formatting (no writes)
+make fmt-shell-check
+
+# Run shell lint checks
+make lint-shell
+
+# Run shell formatting + lint checks
+make check-shell
+
 # Render merged policy manually
 sudo ./sbin/bastion-render-policy --policy-repo ../k8s-bastion-policy --env prod --init-repo .
 
@@ -130,6 +142,21 @@ bastion-kubeconfig-expiry
 # Test suite
 make test
 ```
+
+## Shell Quality Checks
+
+Use these targets for fast, local shell script quality checks.
+
+- `make fmt-shell` - format shell files in-place with `shfmt -i 2 -ci -sr -bn -w .`
+- `make fmt-shell-check` - verify shell formatting without modifying files (returns non-zero when diffs exist)
+- `make lint-shell` - run `shellcheck` across repository shell scripts
+- `make check-shell` - run both formatting check and shell lint in one command
+
+Recommended usage:
+
+- After editing shell scripts: run `make fmt-shell`
+- Before commit or PR: run `make check-shell`
+- Before release or broader validation: run `make check-shell && make test`
 
 ## Configuration Snapshot
 
@@ -228,6 +255,9 @@ see `docs/k8s-users-management.md`.
 ## Testing
 
 A comprehensive Podman-based test suite is available. See `tests/README.md` for full details.
+
+For quick static shell checks, run `make check-shell`.
+Use `make test` for the full container-based integration suite.
 
 Quick run:
 

@@ -5,135 +5,135 @@ set -euo pipefail
 CONTAINER_NAME="bastion-test"
 
 log_info() {
-	echo "[VERIFY] $1"
+  echo "[VERIFY] $1"
 }
 
 log_success() {
-	echo "[PASS] $1"
+  echo "[PASS] $1"
 }
 
 log_fail() {
-	echo "[FAIL] $1" >&2
+  echo "[FAIL] $1" >&2
 }
 
 # Check groups
 check_groups() {
-	log_info "Checking k8s-* groups..."
+  log_info "Checking k8s-* groups..."
 
-	local groups=("k8s-test-group")
-	local all_present=true
+  local groups=("k8s-test-group")
+  local all_present=true
 
-	for group in "${groups[@]}"; do
-		if podman exec "$CONTAINER_NAME" getent group "$group" &>/dev/null; then
-			log_success "Group $group exists"
-		else
-			log_fail "Group $group not found"
-			all_present=false
-		fi
-	done
+  for group in "${groups[@]}"; do
+    if podman exec "$CONTAINER_NAME" getent group "$group" &> /dev/null; then
+      log_success "Group $group exists"
+    else
+      log_fail "Group $group not found"
+      all_present=false
+    fi
+  done
 
-	$all_present
+  $all_present
 }
 
 # Check user memberships
 check_user_memberships() {
-	log_info "Checking user group memberships..."
+  log_info "Checking user group memberships..."
 
-	local all_ok=true
+  local all_ok=true
 
-	if podman exec "$CONTAINER_NAME" id -nG bob | grep -q "k8s-test-group"; then
-		log_success "User bob is in k8s-test-group"
-	else
-		log_fail "User bob not in k8s-test-group"
-		all_ok=false
-	fi
+  if podman exec "$CONTAINER_NAME" id -nG bob | grep -q "k8s-test-group"; then
+    log_success "User bob is in k8s-test-group"
+  else
+    log_fail "User bob not in k8s-test-group"
+    all_ok=false
+  fi
 
-	if podman exec "$CONTAINER_NAME" bash -c "id -nG alice | tr ' ' '\n' | grep -qx 'k8s-test-group'"; then
-		log_fail "User alice still has k8s-test-group"
-		all_ok=false
-	else
-		log_success "User alice no longer has k8s-test-group"
-	fi
+  if podman exec "$CONTAINER_NAME" bash -c "id -nG alice | tr ' ' '\n' | grep -qx 'k8s-test-group'"; then
+    log_fail "User alice still has k8s-test-group"
+    all_ok=false
+  else
+    log_success "User alice no longer has k8s-test-group"
+  fi
 
-	$all_ok
+  $all_ok
 }
 
 # Check kubeconfig directories
 check_kubeconfigs() {
-	log_info "Checking kubeconfig directories..."
+  log_info "Checking kubeconfig directories..."
 
-	local users=("alice" "bob")
-	local all_ok=true
+  local users=("alice" "bob")
+  local all_ok=true
 
-	for user in "${users[@]}"; do
-		if podman exec "$CONTAINER_NAME" test -d "/home/$user/.kube"; then
-			log_success "Kubeconfig directory for $user exists"
-		else
-			log_fail "Kubeconfig directory for $user not found"
-			all_ok=false
-		fi
-	done
+  for user in "${users[@]}"; do
+    if podman exec "$CONTAINER_NAME" test -d "/home/$user/.kube"; then
+      log_success "Kubeconfig directory for $user exists"
+    else
+      log_fail "Kubeconfig directory for $user not found"
+      all_ok=false
+    fi
+  done
 
-	$all_ok
+  $all_ok
 }
 
 # Check bootstrap kubeconfigs
 check_bootstrap_configs() {
-	log_info "Checking bootstrap kubeconfigs..."
+  log_info "Checking bootstrap kubeconfigs..."
 
-	local all_ok=true
+  local all_ok=true
 
-	if podman exec "$CONTAINER_NAME" test -f "/home/bob/.kube/bootstrap"; then
-		log_success "Bootstrap kubeconfig for bob exists"
-	else
-		log_fail "Bootstrap kubeconfig for bob not found"
-		all_ok=false
-	fi
+  if podman exec "$CONTAINER_NAME" test -f "/home/bob/.kube/bootstrap"; then
+    log_success "Bootstrap kubeconfig for bob exists"
+  else
+    log_fail "Bootstrap kubeconfig for bob not found"
+    all_ok=false
+  fi
 
-	if podman exec "$CONTAINER_NAME" test -f "/home/alice/.kube/bootstrap"; then
-		log_fail "Bootstrap kubeconfig for alice is still active"
-		all_ok=false
-	else
-		log_success "Bootstrap kubeconfig for alice is no longer active"
-	fi
+  if podman exec "$CONTAINER_NAME" test -f "/home/alice/.kube/bootstrap"; then
+    log_fail "Bootstrap kubeconfig for alice is still active"
+    all_ok=false
+  else
+    log_success "Bootstrap kubeconfig for alice is no longer active"
+  fi
 
-	if podman exec "$CONTAINER_NAME" bash -c 'compgen -G "/home/alice/.kube/bootstrap.disabled.*" >/dev/null'; then
-		log_success "Disabled bootstrap backup for alice exists"
-	else
-		log_fail "Disabled bootstrap backup for alice not found"
-		all_ok=false
-	fi
+  if podman exec "$CONTAINER_NAME" bash -c 'compgen -G "/home/alice/.kube/bootstrap.disabled.*" >/dev/null'; then
+    log_success "Disabled bootstrap backup for alice exists"
+  else
+    log_fail "Disabled bootstrap backup for alice not found"
+    all_ok=false
+  fi
 
-	$all_ok
+  $all_ok
 }
 
 # Check marker files
 check_markers() {
-	log_info "Checking users initialization markers..."
+  log_info "Checking users initialization markers..."
 
-	if podman exec "$CONTAINER_NAME" bash -c 'test -f /usr/local/lib/bastion/.users-init-done || test -f /usr/lib/bastion/.users-init-done'; then
-		log_success "Users init marker exists"
-	else
-		log_fail "Users init marker missing"
-		return 1
-	fi
+  if podman exec "$CONTAINER_NAME" bash -c 'test -f /usr/local/lib/bastion/.users-init-done || test -f /usr/lib/bastion/.users-init-done'; then
+    log_success "Users init marker exists"
+  else
+    log_fail "Users init marker missing"
+    return 1
+  fi
 }
 
 # Main
 main() {
-	log_info "=== Verifying Users Setup ==="
+  log_info "=== Verifying Users Setup ==="
 
-	local failed=0
+  local failed=0
 
-	check_groups || failed=1
-	check_user_memberships || failed=1
-	check_kubeconfigs || failed=1
-	check_bootstrap_configs || failed=1
-	check_markers || failed=1
+  check_groups || failed=1
+  check_user_memberships || failed=1
+  check_kubeconfigs || failed=1
+  check_bootstrap_configs || failed=1
+  check_markers || failed=1
 
-	log_info "=== Users Verification Complete ==="
+  log_info "=== Users Verification Complete ==="
 
-	return $failed
+  return $failed
 }
 
 main "$@"

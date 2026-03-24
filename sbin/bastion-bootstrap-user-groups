@@ -11,10 +11,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -32,7 +44,7 @@ source "${LIB_DIR}/common.sh"
 POLICY="/etc/kubernetes/access-policy.yaml"
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-bootstrap-user-groups [--policy FILE]
 
@@ -48,7 +60,7 @@ parse_args() {
         POLICY="$2"
         shift 2
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -70,7 +82,7 @@ validate_inputs() {
 ensure_group_exists() {
   local group="$1"
 
-  if getent group "$group" >/dev/null 2>&1; then
+  if getent group "$group" > /dev/null 2>&1; then
     log_debug "Group exists: $group"
     return
   fi
@@ -84,7 +96,7 @@ ensure_user_in_group() {
   local group="$2"
 
   # user must exist
-  if ! getent passwd "$user" >/dev/null 2>&1; then
+  if ! getent passwd "$user" > /dev/null 2>&1; then
     log_warn "User not found on host: $user (skipping)"
     return
   fi
@@ -119,7 +131,7 @@ get_user_groups() {
   yq -r "
     (.users.${user}.ensureGroups // [])
     | .[]
-  " "$POLICY" 2>/dev/null || true
+  " "$POLICY" 2> /dev/null || true
 }
 
 process_users() {

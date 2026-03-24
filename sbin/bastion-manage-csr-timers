@@ -11,10 +11,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -45,7 +57,7 @@ KUBECONFIG_PATH="/etc/kubernetes/admin.kubeconfig"
 ACTION=""
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-manage-csr-timers --install [options]
   bastion-manage-csr-timers --remove
@@ -89,7 +101,7 @@ parse_args() {
         CLEANUP_ON_ACTIVE="$2"
         shift 2
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -104,7 +116,7 @@ parse_args() {
 
 write_approver_service() {
   local dst="$1"
-  cat >"$dst" <<EOF
+  cat > "$dst" << EOF
 [Unit]
 Description=Bastion CSR approver
 
@@ -117,7 +129,7 @@ EOF
 
 write_approver_timer() {
   local dst="$1"
-  cat >"$dst" <<EOF
+  cat > "$dst" << EOF
 [Unit]
 Description=Run bastion CSR approver periodically
 
@@ -133,7 +145,7 @@ EOF
 
 write_cleanup_service() {
   local dst="$1"
-  cat >"$dst" <<EOF
+  cat > "$dst" << EOF
 [Unit]
 Description=Bastion CSR cleanup
 
@@ -146,7 +158,7 @@ EOF
 
 write_cleanup_timer() {
   local dst="$1"
-  cat >"$dst" <<EOF
+  cat > "$dst" << EOF
 [Unit]
 Description=Run bastion CSR cleanup periodically
 
@@ -211,8 +223,8 @@ remove_unit_file() {
 
 remove_units() {
   log_info "Stopping and disabling timers"
-  systemctl disable --now "$APPROVER_TIMER" >/dev/null 2>&1 || true
-  systemctl disable --now "$CLEANUP_TIMER" >/dev/null 2>&1 || true
+  systemctl disable --now "$APPROVER_TIMER" > /dev/null 2>&1 || true
+  systemctl disable --now "$CLEANUP_TIMER" > /dev/null 2>&1 || true
 
   remove_unit_file "$APPROVER_TIMER"
   remove_unit_file "$APPROVER_SERVICE"

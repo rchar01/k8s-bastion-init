@@ -18,10 +18,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -42,7 +54,7 @@ POLICY="/etc/kubernetes/access-policy.yaml"
 EXPECTED_SIGNER=""
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-csr-cleanup [--retention-days N] [--policy FILE]
 
@@ -58,14 +70,14 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --retention-days)
-        RETENTION_SECONDS=$(( $2 * 24 * 60 * 60 ))
+        RETENTION_SECONDS=$(($2 * 24 * 60 * 60))
         shift 2
         ;;
       --policy)
         POLICY="$2"
         shift 2
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -81,8 +93,8 @@ parse_args() {
 # --------------------------------------------------
 
 expired_csrs() {
-  kubectl get csr -o json |
-    jq -r --arg signer "$EXPECTED_SIGNER" \
+  kubectl get csr -o json \
+    | jq -r --arg signer "$EXPECTED_SIGNER" \
       --argjson now "$(date +%s)" \
       --argjson retention "$RETENTION_SECONDS" '
       .items[]
@@ -95,13 +107,13 @@ expired_csrs() {
           < ($now - $retention)
         )
       | $csr.metadata.name
-    ' 2>/dev/null || true
+    ' 2> /dev/null || true
 }
 
 delete_csr() {
   local csr="$1"
 
-  kubectl delete csr "$csr" >/dev/null
+  kubectl delete csr "$csr" > /dev/null
   log_info "Deleted expired CSR: $csr"
 }
 

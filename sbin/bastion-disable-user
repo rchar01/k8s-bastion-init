@@ -21,10 +21,22 @@ resolve_lib_dir() {
   local script_dir
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo /usr/local/lib/bastion; return; }
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo /usr/lib/bastion; return; }
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "bastion library not found" >&2
   exit 1
@@ -49,7 +61,7 @@ DISABLED_FILES=0
 SKIPPED_GROUPS=0
 
 usage() {
-  cat <<EOF
+  cat << EOF
 Usage:
   bastion-disable-user --user USER [--policy FILE] [--dry-run] [--force]
 
@@ -90,7 +102,7 @@ parse_args() {
         FORCE=1
         shift
         ;;
-      -h|--help)
+      -h | --help)
         usage
         exit 0
         ;;
@@ -105,12 +117,12 @@ parse_args() {
 
 policy_has_user() {
   local user="$1"
-  yq -e ".users.${user}" "$POLICY" >/dev/null 2>&1
+  yq -e ".users.${user}" "$POLICY" > /dev/null 2>&1
 }
 
 validate_inputs() {
   [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
-  getent passwd "$TARGET_USER" >/dev/null 2>&1 || die "User not found on host: $TARGET_USER"
+  getent passwd "$TARGET_USER" > /dev/null 2>&1 || die "User not found on host: $TARGET_USER"
 
   if policy_has_user "$TARGET_USER" && [[ "$FORCE" -ne 1 ]]; then
     die "User '$TARGET_USER' still exists in policy. Remove the user from policy first or use --force."
@@ -156,7 +168,7 @@ remove_group_if_member() {
   fi
 
   log_info "Removing $user from group $group"
-  run_cmd gpasswd -d "$user" "$group" >/dev/null
+  run_cmd gpasswd -d "$user" "$group" > /dev/null
   REMOVED_GROUPS=$((REMOVED_GROUPS + 1))
 }
 

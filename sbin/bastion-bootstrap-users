@@ -10,7 +10,7 @@ PROGRAM_NAME="bastion-bootstrap-users"
 # --------------------------------------------------
 
 usage() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage:
   bastion-bootstrap-users --init --source DIR
   bastion-bootstrap-users --reconcile --source DIR
@@ -33,13 +33,21 @@ parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --init)
-        MODE="init"; shift ;;
+        MODE="init"
+        shift
+        ;;
       --reconcile)
-        MODE="reconcile"; shift ;;
+        MODE="reconcile"
+        shift
+        ;;
       --source)
-        SOURCE_DIR="$2"; shift 2 ;;
-      -h|--help)
-        usage; exit 0 ;;
+        SOURCE_DIR="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
       *)
         echo "ERROR: Unknown argument: $1" >&2
         usage
@@ -48,8 +56,16 @@ parse_args() {
     esac
   done
 
-  [[ -n "$MODE" ]] || { echo "ERROR: Choose --init or --reconcile" >&2; usage; exit 1; }
-  [[ -n "$SOURCE_DIR" ]] || { echo "ERROR: --source is required" >&2; usage; exit 1; }
+  [[ -n "$MODE" ]] || {
+    echo "ERROR: Choose --init or --reconcile" >&2
+    usage
+    exit 1
+  }
+  [[ -n "$SOURCE_DIR" ]] || {
+    echo "ERROR: --source is required" >&2
+    usage
+    exit 1
+  }
 
   SOURCE_DIR="$(readlink -f "$SOURCE_DIR")"
 }
@@ -71,10 +87,13 @@ USERS_INIT_MARKER="${LIB_DST}/.users-init-done"
 # Helpers (no shared libs yet)
 # --------------------------------------------------
 
-die_plain() { echo "ERROR: $*" >&2; exit 1; }
+die_plain() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
 
 need_cmd_plain() {
-  command -v "$1" >/dev/null 2>&1 || die_plain "Missing command: $1"
+  command -v "$1" > /dev/null 2>&1 || die_plain "Missing command: $1"
 }
 
 # Install/copy only if different (cmp). Keeps idempotency.
@@ -94,7 +113,7 @@ install_file_if_changed() {
 read_source_version() {
   local vf="$SOURCE_DIR/VERSION"
   [[ -f "$vf" ]] || die_plain "Missing VERSION file in source dir: $vf"
-  tr -d ' \t\r\n' <"$vf"
+  tr -d ' \t\r\n' < "$vf"
 }
 
 # --------------------------------------------------
@@ -123,7 +142,7 @@ validate_prerequisites() {
   fi
 
   # Check yq is available (installed by machine bootstrap)
-  if ! command -v yq &>/dev/null; then
+  if ! command -v yq &> /dev/null; then
     die_plain "yq not found. Run bastion-bootstrap-machine first to install tools."
   fi
 
@@ -193,9 +212,9 @@ apply_users_state() {
 
 verify_users() {
   log_info "Verifying users setup"
-  
+
   # Check policy is readable with yq
-  if ! yq -e '.' "$POLICY_DST" >/dev/null 2>&1; then
+  if ! yq -e '.' "$POLICY_DST" > /dev/null 2>&1; then
     die "Policy file is not valid YAML: $POLICY_DST"
   fi
 

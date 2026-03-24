@@ -13,13 +13,25 @@ resolve_lib_dir() {
   script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
   # Installed (preferred)
-  [[ -f /usr/local/lib/bastion/log.sh ]] && { echo "/usr/local/lib/bastion"; return; }
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo "/usr/local/lib/bastion"
+    return
+  }
   # Legacy installed
-  [[ -f /usr/lib/bastion/log.sh ]] && { echo "/usr/lib/bastion"; return; }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo "/usr/lib/bastion"
+    return
+  }
   # Repo/bootstrap layout (../lib contains log.sh)
-  [[ -f "${script_dir}/../lib/log.sh" ]] && { echo "${script_dir}/../lib"; return; }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
   # Container-mounted repo
-  [[ -f /bastion/lib/log.sh ]] && { echo "/bastion/lib"; return; }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
 
   echo "ERROR: bastion library not found" >&2
   exit 1
@@ -37,16 +49,16 @@ source "${LIB_DIR}/args.sh"
 # --------------------------------------------------
 
 usage() {
-  cat <<'EOF'
+  cat << 'EOF'
 Usage:
   bastion-install-tools [--base-dir DIR] [--tools-dir DIR] [--dest-bin DIR]
 EOF
 }
 
 install_os_deps() {
-  command -v dnf >/dev/null 2>&1 || return 0
+  command -v dnf > /dev/null 2>&1 || return 0
   log_info "Installing OS dependencies..."
-  dnf install -y tar gzip file findutils >/dev/null
+  dnf install -y tar gzip file findutils > /dev/null
 }
 
 # --------------------------------------------------
@@ -121,9 +133,9 @@ find_binaries() {
     ! -iname "*.txt" \
     ! -iname "*.sig" \
     ! -iname "*.sha*" \
-    -exec file {} \; |
-    grep -E "executable|ELF" |
-    cut -d: -f1
+    -exec file {} \; \
+    | grep -E "executable|ELF" \
+    | cut -d: -f1
 }
 
 # --------------------------------------------------
@@ -235,7 +247,7 @@ validate() {
   )
 
   for t in "${tools[@]}"; do
-    if command -v "$t" >/dev/null 2>&1; then
+    if command -v "$t" > /dev/null 2>&1; then
       log_info "OK: $t"
     else
       log_warn "Not found: $t"

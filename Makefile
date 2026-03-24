@@ -1,11 +1,15 @@
 SHELL := /bin/bash
 
-.PHONY: help download test test-no-cleanup test-setup test-cleanup init reconcile
+.PHONY: help download fmt-shell fmt-shell-check lint-shell check-shell test test-no-cleanup test-setup test-cleanup init reconcile
 
 help:
 	@printf '%s\n' \
 	  'Available targets:' \
 	  '  make download               Download tool artifacts into tools/' \
+	  '  make fmt-shell              Format shell files with shfmt' \
+	  '  make fmt-shell-check        Check shell formatting (fails on diffs)' \
+	  '  make lint-shell             Run shellcheck on shell scripts' \
+	  '  make check-shell            Run shell format + lint checks' \
 	  '  make test                   Run the full Podman test suite' \
 	  '  make test-no-cleanup        Run tests and keep the container for inspection' \
 	  '  make test-setup             Build and start the test container only' \
@@ -15,6 +19,17 @@ help:
 
 download:
 	./download.sh
+
+fmt-shell:
+	shfmt -i 2 -ci -sr -bn -w .
+
+fmt-shell-check:
+	shfmt -i 2 -ci -sr -bn -d .
+
+lint-shell:
+	bash -O globstar -c 'shellcheck -x -S warning -e SC1090,SC2034 ./*.sh ./bin/* ./sbin/* ./lib/*.sh ./tests/**/*.sh'
+
+check-shell: fmt-shell-check lint-shell
 
 test:
 	./tests/run-all.sh

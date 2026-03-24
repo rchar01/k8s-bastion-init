@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[1]}")" && pwd)"
 BASE_DIR="$SCRIPT_DIR"
 TOOLS_DIR=""
