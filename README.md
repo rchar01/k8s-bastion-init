@@ -125,7 +125,7 @@ bastion-kube-renew
 
 # Admin verification
 kubectl cluster-info
-sudo bastion-kubeconfig-expiry
+bastion-kubeconfig-expiry
 
 # Test suite
 make test

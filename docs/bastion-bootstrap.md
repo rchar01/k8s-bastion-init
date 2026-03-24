@@ -299,7 +299,6 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 - **`bastion-bootstrap-kubeconfig`**: creates `~/.kube/bootstrap` for users defined in policy
 - **`bastion-bootstrap-admin-kubeconfig`**: installs admin kubeconfigs for users in the `k8s-admin` policy group
 - **`bastion-disable-user`**: removes bastion-managed groups and disables active kubeconfigs for a target user
-- **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
 - **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
@@ -311,6 +310,7 @@ CSR timer services run `kubectl` with:
 ### User Script
 
 - **`bastion-kube-renew`**: renews a user certificate based on current Unix group membership
+- **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 
 Requirements:
 
@@ -346,7 +346,7 @@ Notes:
 
 ```bash
 kubectl cluster-info
-sudo bastion-kubeconfig-expiry
+bastion-kubeconfig-expiry
 ```
 
 For end-user renewal and access behavior, see `docs/k8s-users-management.md`.
@@ -374,7 +374,7 @@ sudo ./bastion_init.sh <env>
 ### Immediate Post-Init Checks
 
 - run `kubectl cluster-info`
-- run `sudo bastion-kubeconfig-expiry`
+- run `bastion-kubeconfig-expiry`
 - verify `/etc/kubernetes/access-policy.yaml` matches the rendered production policy
 - verify `/etc/profile.d/bastion-login.sh` exists
 - verify at least one intended admin received the expected kubeconfig
@@ -489,7 +489,7 @@ WantedBy=timers.target
 - run `./download.sh` or `make download`
 - verify `kubeconfigs/k8s-admin.kubeconfig` and policy inputs
 - use Mode 1 direct bootstrap commands or Mode 2 `bastion_init.sh`
-- verify `kubectl cluster-info` and `sudo bastion-kubeconfig-expiry`
+- verify `kubectl cluster-info` and `bastion-kubeconfig-expiry`
 
 ### After Policy Changes
 
@@ -549,7 +549,7 @@ WantedBy=timers.target
 
 - verify `bastion-csr-approver.timer` is enabled and active
 - verify `bastion-csr-cleanup.timer` is enabled and active
-- review certificate expiry with `sudo bastion-kubeconfig-expiry`
+- review certificate expiry with `bastion-kubeconfig-expiry`
 
 ### Manual Verification
 

@@ -136,7 +136,7 @@ _bastion_kube_status() {
 
   if [[ -f "\$config" ]]; then
     echo "Using kubeconfig: \$config"
-    echo "Certificate expiry: run sudo bastion-kubeconfig-expiry \$kube_dir"
+    echo "Certificate expiry: run bastion-kubeconfig-expiry \$kube_dir"
   elif [[ -f "\$bootstrap" ]]; then
     echo "Using bootstrap kubeconfig: \$bootstrap"
     echo "Certificate not issued."

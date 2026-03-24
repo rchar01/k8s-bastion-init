@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-  echo "Run as root" >&2
-  exit 1
-fi
-
 if [[ -f "/usr/local/lib/bastion/VERSION" ]]; then
   cat "/usr/local/lib/bastion/VERSION"
   exit 0

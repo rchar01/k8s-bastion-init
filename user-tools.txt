@@ -15,3 +15,5 @@ nerdctl
 etcdctl
 etcdutl
 bastion-kube-renew
+bastion-kubeconfig-expiry
+bastion-version

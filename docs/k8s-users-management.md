@@ -38,7 +38,7 @@ Users do not get long-lived static kubeconfig credentials.
 | `bastion-kube-renew` | User self-service certificate renewal |
 | `sudo bastion-csr-approver` | Validate and approve bastion CSRs |
 | `sudo bastion-csr-cleanup` | Delete old bastion CSRs |
-| `sudo bastion-kubeconfig-expiry` | Show certificate expiry summary |
+| `bastion-kubeconfig-expiry` | Show certificate expiry summary |
 
 ## Admin Bootstrap
 

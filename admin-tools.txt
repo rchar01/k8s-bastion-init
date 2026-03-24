@@ -12,6 +12,4 @@ bastion-csr-cleanup
 bastion-manage-csr-timers
 bastion-install-containerd
 bastion-install-tools
-bastion-kubeconfig-expiry
 bastion-login-profile
-bastion-version
