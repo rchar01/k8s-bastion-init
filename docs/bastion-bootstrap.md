@@ -333,14 +333,45 @@ The bastion displays login information via `/etc/profile.d/bastion-login.sh`.
 
 On a fresh interactive SSH login, users see:
 
-- Kubernetes access status and certificate expiry
-- Available tools based on user and admin group membership
-- `k8s-*` groups the user belongs to
+- Bastion host identity (hostname and bastion version)
+- User kubeconfig status (path/context/namespace and cert lifetime state)
+- Cluster probe status from `/etc/kubernetes/admin.kubeconfig` (cluster, API server, health)
+- Consolidated notices in one place (cert renewal, kubeconfig/bootstrap state, context mismatch, prod/preprod safety)
+- Compact tool lines (`Tools:` and `Bastion:`)
 
 Notes:
 
 - The message is shown only for interactive shells over SSH
 - Users must re-login to pick up group changes, or manually source `/etc/profile.d/bastion-login.sh`
+
+### Notice Severity and Meanings
+
+The login banner prints notices as plain lines without a header. Notices are capped to 4 lines; if more exist, the banner prints `INFO: Additional notices: <N>`.
+
+Certificate state thresholds:
+
+- `OK`: more than 3 days remaining
+- `WARN`: 1-3 days remaining
+- `CRIT`: less than 24 hours remaining
+- `EXPIRED`: certificate already expired
+
+Notice catalog:
+
+| Severity | Notice text | Meaning | Recommended action |
+| --- | --- | --- | --- |
+| `CRIT` | `Client cert expired. Run: bastion-kube-renew` | User cert is no longer valid | Run `bastion-kube-renew` |
+| `CRIT` | `Client cert expires in <Nh>. Run: bastion-kube-renew` | User cert is below 24h lifetime | Run `bastion-kube-renew` now |
+| `WARN` | `Client cert expires in <Nd>. Run: bastion-kube-renew` | User cert has 1-3 days left | Renew soon with `bastion-kube-renew` |
+| `WARN` | `No active kubeconfig. Bootstrap found - run: bastion-kube-renew` | `~/.kube/config` missing, bootstrap exists | Run `bastion-kube-renew` |
+| `CRIT` | `No kubeconfig or bootstrap. Ask admin: sudo bastion-bootstrap-kubeconfig --user <user>` | User cannot self-recover | Admin runs `sudo bastion-bootstrap-kubeconfig --user <user>` |
+| `CRIT` | `User kubeconfig is invalid. Run: bastion-kube-renew` | Kubeconfig exists but is malformed/unreadable | Run `bastion-kube-renew` |
+| `WARN` | `No user client certificate. Run: bastion-kube-renew` | Kubeconfig has no usable client cert | Run `bastion-kube-renew` |
+| `CRIT` | `Admin probe kubeconfig missing: /etc/kubernetes/admin.kubeconfig` | Cluster health probe cannot run | Restore `/etc/kubernetes/admin.kubeconfig` |
+| `CRIT` | `Cluster API is unreachable` | API `/readyz` probe failed | Check API endpoint/network/auth from bastion |
+| `WARN` | `Cluster has NotReady nodes (<ready>/<total> Ready)` | API is up but node readiness degraded | Investigate node readiness in cluster |
+| `WARN` | `User context cluster differs from admin probe cluster` | User kubeconfig cluster differs from admin probe cluster | Verify target cluster/context before changes |
+| `WARN` | `PRODUCTION cluster - actions are audited` | Cluster name matches `prod|live|main` | Apply extra change safety controls |
+| `INFO` | `PREPROD cluster - validate target before changes` | Cluster name matches `preprod|stage|staging` | Verify target and intent before changes |
 
 ## Verification
 
