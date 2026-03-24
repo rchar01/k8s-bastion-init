@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-manage-cluster-status-timer"
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+SYSTEMD_DIR="/etc/systemd/system"
+
+SERVICE_NAME="bastion-cluster-status.service"
+TIMER_NAME="bastion-cluster-status.timer"
+
+ON_BOOT_SEC="30s"
+ON_ACTIVE_SEC="30s"
+
+ACTION=""
+
+usage() {
+  cat << EOF
+Usage:
+  bastion-manage-cluster-status-timer --install [options]
+  bastion-manage-cluster-status-timer --remove
+
+Options:
+  --install                 Install/update and enable/start timer
+  --remove                  Stop/disable timer and remove unit files
+  --on-boot-sec DUR         Timer OnBootSec (default: ${ON_BOOT_SEC})
+  --on-active-sec DUR       Timer OnUnitActiveSec (default: ${ON_ACTIVE_SEC})
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install)
+        ACTION="install"
+        shift
+        ;;
+      --remove)
+        ACTION="remove"
+        shift
+        ;;
+      --on-boot-sec)
+        ON_BOOT_SEC="$2"
+        shift 2
+        ;;
+      --on-active-sec)
+        ON_ACTIVE_SEC="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$ACTION" ]] || die "Specify --install or --remove"
+}
+
+write_service() {
+  local dst="$1"
+  cat > "$dst" << EOF
+[Unit]
+Description=Refresh bastion cluster status cache
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-cluster-probe
+EOF
+}
+
+write_timer() {
+  local dst="$1"
+  cat > "$dst" << EOF
+[Unit]
+Description=Run bastion cluster status probe periodically
+
+[Timer]
+OnBootSec=${ON_BOOT_SEC}
+OnUnitActiveSec=${ON_ACTIVE_SEC}
+Unit=${SERVICE_NAME}
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+install_if_changed() {
+  local src="$1"
+  local dst="$2"
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    log_info "Unit unchanged: $dst"
+    return 1
+  fi
+
+  install -m 0644 "$src" "$dst"
+  log_info "Installed unit: $dst"
+  return 0
+}
+
+install_units() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir:-}"' EXIT
+
+  write_service "$tmp_dir/$SERVICE_NAME"
+  write_timer "$tmp_dir/$TIMER_NAME"
+
+  install_if_changed "$tmp_dir/$SERVICE_NAME" "$SYSTEMD_DIR/$SERVICE_NAME" || true
+  install_if_changed "$tmp_dir/$TIMER_NAME" "$SYSTEMD_DIR/$TIMER_NAME" || true
+
+  log_info "Reloading systemd daemon"
+  systemctl daemon-reload
+
+  log_info "Enabling and starting timer"
+  systemctl enable --now "$TIMER_NAME"
+
+  log_info "Cluster status timer installed and active"
+}
+
+remove_units() {
+  log_info "Stopping and disabling timer"
+  systemctl disable --now "$TIMER_NAME" > /dev/null 2>&1 || true
+
+  if [[ -f "$SYSTEMD_DIR/$TIMER_NAME" ]]; then
+    rm -f "$SYSTEMD_DIR/$TIMER_NAME"
+    log_info "Removed unit: $SYSTEMD_DIR/$TIMER_NAME"
+  fi
+
+  if [[ -f "$SYSTEMD_DIR/$SERVICE_NAME" ]]; then
+    rm -f "$SYSTEMD_DIR/$SERVICE_NAME"
+    log_info "Removed unit: $SYSTEMD_DIR/$SERVICE_NAME"
+  fi
+
+  log_info "Reloading systemd daemon"
+  systemctl daemon-reload
+
+  log_info "Cluster status timer units removed"
+}
+
+main() {
+  require_root
+
+  need_cmd systemctl
+  need_cmd install
+  need_cmd cmp
+  need_cmd mktemp
+  need_cmd rm
+
+  parse_args "$@"
+
+  case "$ACTION" in
+    install)
+      install_units
+      ;;
+    remove)
+      remove_units
+      ;;
+  esac
+}
+
+main "$@"

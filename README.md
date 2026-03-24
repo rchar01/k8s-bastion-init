@@ -236,6 +236,8 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `./bastion_reconcile.sh <env>` - production reconcile wrapper for Mode 2
 - `sudo bastion-disable-user --user <user>` - disable bastion-managed Kubernetes access for a target user
 - `sudo bastion-manage-csr-timers --remove` - remove default CSR approver/cleanup systemd timers
+- `sudo bastion-manage-cluster-status-timer --install` - install timer that refreshes login-banner cluster status cache
+- `sudo bastion-cluster-probe` - run one-shot cluster status cache refresh
 - `bastion-kube-renew` - user self-service certificate renewal
 - `make help` - list convenience targets for local workflows and tests
 

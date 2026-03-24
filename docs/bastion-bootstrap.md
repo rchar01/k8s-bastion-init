@@ -302,6 +302,8 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
 - **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
+- **`bastion-cluster-probe`**: writes compact cluster status cache for login banner
+- **`bastion-manage-cluster-status-timer`**: installs/removes cluster status probe timer
 
 CSR timer services run `kubectl` with:
 
@@ -335,7 +337,7 @@ On a fresh interactive SSH login, users see:
 
 - Bastion host identity (hostname and bastion version)
 - User kubeconfig status (path/context/namespace and cert lifetime state)
-- Cluster probe status from `/etc/kubernetes/admin.kubeconfig` (cluster, API server, health)
+- Cluster status from cache (`cluster`, `API server`, `health`) plus cache timestamp/age
 - Consolidated notices in one place (cert renewal, kubeconfig/bootstrap state, context mismatch, prod/preprod safety)
 - Compact tool lines (`Tools:` and `Bastion:`)
 
@@ -343,6 +345,24 @@ Notes:
 
 - The message is shown only for interactive shells over SSH
 - Users must re-login to pick up group changes, or manually source `/etc/profile.d/bastion-login.sh`
+
+### Cluster Status Cache
+
+Cluster health shown in the login banner is read from `/run/bastion-cluster-status.json`.
+The cache is produced by root-owned systemd units:
+
+- `bastion-cluster-status.service`
+- `bastion-cluster-status.timer` (default cadence: every 30s)
+
+This avoids exposing `/etc/kubernetes/admin.kubeconfig` to regular users while keeping banner probes fast.
+
+Useful commands:
+
+```bash
+sudo systemctl status bastion-cluster-status.timer
+sudo systemctl start bastion-cluster-status.service
+sudo cat /run/bastion-cluster-status.json | jq .
+```
 
 ### Notice Severity and Meanings
 

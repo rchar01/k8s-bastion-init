@@ -130,7 +130,8 @@ BASTION_USER_TOOLS="$user_tools"
 BASTION_ADMIN_TOOLS="$admin_tools"
 BASTION_ADMIN_GROUP="$ADMIN_GROUP"
 BASTION_HELPERS="bastion-kube-renew bastion-kubeconfig-expiry bastion-version"
-BASTION_ADMIN_KUBECONFIG="/etc/kubernetes/admin.kubeconfig"
+BASTION_CLUSTER_STATUS_CACHE="/run/bastion-cluster-status.json"
+BASTION_CLUSTER_STATUS_STALE_SECONDS="90"
 
 _bastion_notice_add() {
   local level="\$1"
@@ -253,11 +254,11 @@ _bastion_collect_user_status() {
 
   BASTION_USER_KUBECONFIG="\$kubeconfig"
   BASTION_USER_CONTEXT="\$context"
-  user_ref="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == $ctx) | .context.user // ""' <<< "\$json" | head -n1)"
-  cluster_ref="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == $ctx) | .context.cluster // ""' <<< "\$json" | head -n1)"
-  namespace="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == $ctx) | .context.namespace // "default"' <<< "\$json" | head -n1)"
-  cert_data="\$(jq -r --arg user "\$user_ref" '.users[]? | select(.name == $user) | .user["client-certificate-data"] // ""' <<< "\$json" | head -n1)"
-  cert_file="\$(jq -r --arg user "\$user_ref" '.users[]? | select(.name == $user) | .user["client-certificate"] // ""' <<< "\$json" | head -n1)"
+  user_ref="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == \$ctx) | .context.user // ""' <<< "\$json" | head -n1)"
+  cluster_ref="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == \$ctx) | .context.cluster // ""' <<< "\$json" | head -n1)"
+  namespace="\$(jq -r --arg ctx "\$context" '.contexts[]? | select(.name == \$ctx) | .context.namespace // "default"' <<< "\$json" | head -n1)"
+  cert_data="\$(jq -r --arg user "\$user_ref" '.users[]? | select(.name == \$user) | .user["client-certificate-data"] // ""' <<< "\$json" | head -n1)"
+  cert_file="\$(jq -r --arg user "\$user_ref" '.users[]? | select(.name == \$user) | .user["client-certificate"] // ""' <<< "\$json" | head -n1)"
 
   BASTION_USER_CLUSTER="\$cluster_ref"
   BASTION_USER_NAMESPACE="\${namespace:-default}"
@@ -293,53 +294,76 @@ _bastion_collect_user_status() {
 }
 
 _bastion_collect_cluster_status() {
-  local admin_cfg admin_ctx cluster_name server start_ns end_ns latency_ms nodes_raw total ready
+  local cache_json cluster_name server health ready total latency error generated_at generated_epoch now age
 
   BASTION_CLUSTER_NAME="-"
   BASTION_CLUSTER_SERVER="-"
   BASTION_CLUSTER_HEALTH="UNKNOWN"
+  BASTION_CLUSTER_STATUS_TIME="-"
+  BASTION_CLUSTER_STATUS_AGE="-"
 
-  if [[ ! -f "\$BASTION_ADMIN_KUBECONFIG" ]]; then
-    BASTION_CLUSTER_HEALTH="DOWN (admin kubeconfig missing)"
-    _bastion_notice_add "CRIT" "Admin probe kubeconfig missing: \$BASTION_ADMIN_KUBECONFIG"
+  if [[ ! -s "\$BASTION_CLUSTER_STATUS_CACHE" ]]; then
+    BASTION_CLUSTER_HEALTH="DOWN (status cache unavailable)"
+    _bastion_notice_add "WARN" "Cluster status cache unavailable"
     return 0
   fi
 
-  admin_cfg="\$(kubectl config view --raw --kubeconfig "\$BASTION_ADMIN_KUBECONFIG" -o json 2>/dev/null || true)"
-  admin_ctx="\$(jq -r '.["current-context"] // ""' <<< "\$admin_cfg")"
-  cluster_name="\$(jq -r --arg ctx "\$admin_ctx" '.contexts[]? | select(.name == $ctx) | .context.cluster // ""' <<< "\$admin_cfg" | head -n1)"
-  server="\$(jq -r --arg cluster "\$cluster_name" '.clusters[]? | select(.name == $cluster) | .cluster.server // ""' <<< "\$admin_cfg" | head -n1)"
+  cache_json="\$(cat "\$BASTION_CLUSTER_STATUS_CACHE" 2>/dev/null || true)"
+  if [[ -z "\$cache_json" ]]; then
+    BASTION_CLUSTER_HEALTH="DOWN (status cache unreadable)"
+    _bastion_notice_add "WARN" "Cluster status cache unreadable"
+    return 0
+  fi
+
+  cluster_name="\$(jq -r '.cluster_name // "-"' <<< "\$cache_json" 2>/dev/null || echo "-")"
+  server="\$(jq -r '.api_server // "-"' <<< "\$cache_json" 2>/dev/null || echo "-")"
+  health="\$(jq -r '.health // "DOWN"' <<< "\$cache_json" 2>/dev/null || echo "DOWN")"
+  ready="\$(jq -r '.ready_nodes // 0' <<< "\$cache_json" 2>/dev/null || echo 0)"
+  total="\$(jq -r '.total_nodes // 0' <<< "\$cache_json" 2>/dev/null || echo 0)"
+  latency="\$(jq -r '.api_latency_ms // 0' <<< "\$cache_json" 2>/dev/null || echo 0)"
+  error="\$(jq -r '.error // ""' <<< "\$cache_json" 2>/dev/null || echo "")"
+  generated_at="\$(jq -r '.generated_at // "-"' <<< "\$cache_json" 2>/dev/null || echo "-")"
+  generated_epoch="\$(jq -r '.generated_at_epoch // 0' <<< "\$cache_json" 2>/dev/null || echo 0)"
 
   BASTION_CLUSTER_NAME="\${cluster_name:--}"
   BASTION_CLUSTER_SERVER="\${server:--}"
+  BASTION_CLUSTER_STATUS_TIME="\${generated_at:--}"
 
-  start_ns="\$(date +%s%N)"
-  if timeout 3s kubectl --kubeconfig="\$BASTION_ADMIN_KUBECONFIG" get --raw=/readyz >/dev/null 2>&1; then
-    end_ns="\$(date +%s%N)"
-    latency_ms="\$(((end_ns - start_ns) / 1000000))"
+  now="\$(date +%s)"
+  if [[ "\$generated_epoch" =~ ^[0-9]+$ ]] && ((generated_epoch > 0)); then
+    age="\$((now - generated_epoch))"
+    ((age < 0)) && age=0
+    BASTION_CLUSTER_STATUS_AGE="\${age}s"
+    if ((age > BASTION_CLUSTER_STATUS_STALE_SECONDS)); then
+      _bastion_notice_add "WARN" "Cluster status cache is stale (\${age}s old)"
+    fi
   else
-    BASTION_CLUSTER_HEALTH="DOWN (API unreachable)"
-    _bastion_notice_add "CRIT" "Cluster API is unreachable"
-    return 0
+    _bastion_notice_add "WARN" "Cluster status cache has invalid timestamp"
   fi
 
-  nodes_raw="\$(timeout 3s kubectl --kubeconfig="\$BASTION_ADMIN_KUBECONFIG" get nodes --no-headers 2>/dev/null || true)"
-  if [[ -n "\$nodes_raw" ]]; then
-    total="\$(wc -l <<< "\$nodes_raw")"
-    ready="\$(awk '\$2 ~ /Ready/ && \$2 !~ /NotReady/ {count++} END {print count+0}' <<< "\$nodes_raw")"
-  else
-    total=0
-    ready=0
-  fi
+  case "\$health" in
+    OK)
+      BASTION_CLUSTER_HEALTH="OK | Nodes \${ready}/\${total} | API \${latency}ms"
+      ;;
+    DEGRADED)
+      BASTION_CLUSTER_HEALTH="DEGRADED | Nodes \${ready}/\${total} | API \${latency}ms"
+      _bastion_notice_add "WARN" "Cluster has NotReady nodes (\${ready}/\${total} Ready)"
+      ;;
+    DOWN)
+      if [[ -n "\$error" ]]; then
+        BASTION_CLUSTER_HEALTH="DOWN (\$error)"
+        _bastion_notice_add "CRIT" "\$error"
+      else
+        BASTION_CLUSTER_HEALTH="DOWN"
+        _bastion_notice_add "CRIT" "Cluster status probe reports DOWN"
+      fi
+      ;;
+    *)
+      BASTION_CLUSTER_HEALTH="\$health"
+      ;;
+  esac
 
-  if ((total > 0 && ready < total)); then
-    BASTION_CLUSTER_HEALTH="DEGRADED | Nodes \${ready}/\${total} | API \${latency_ms}ms"
-    _bastion_notice_add "WARN" "Cluster has NotReady nodes (\${ready}/\${total} Ready)"
-  else
-    BASTION_CLUSTER_HEALTH="OK | Nodes \${ready}/\${total} | API \${latency_ms}ms"
-  fi
-
-  if [[ -n "\$BASTION_USER_CLUSTER" && -n "\$cluster_name" && "\$BASTION_USER_CLUSTER" != "\$cluster_name" ]]; then
+  if [[ -n "\$BASTION_USER_CLUSTER" && "\$cluster_name" != "-" && "\$BASTION_USER_CLUSTER" != "\$cluster_name" ]]; then
     _bastion_notice_add "WARN" "User context cluster differs from admin probe cluster"
   fi
 
@@ -390,6 +414,7 @@ case \$- in *i*)
     echo "Cluster         : \$BASTION_CLUSTER_NAME" >&2
     echo "API Server      : \$BASTION_CLUSTER_SERVER" >&2
     echo "Health          : \$BASTION_CLUSTER_HEALTH" >&2
+    echo "Status time     : \$BASTION_CLUSTER_STATUS_TIME (\$BASTION_CLUSTER_STATUS_AGE old)" >&2
 
     if [[ \${#BASTION_NOTICES[@]} -gt 0 ]]; then
       echo >&2
@@ -406,8 +431,10 @@ case \$- in *i*)
 esac
 
 unset -f _bastion_cert_remaining_seconds _bastion_collect_cluster_status _bastion_collect_user_status _bastion_notice_add _bastion_print_notices _bastion_regular_tools _bastion_resolve_user_kubeconfig _bastion_set_cert_state
-unset BASTION_ADMIN_GROUP BASTION_ADMIN_KUBECONFIG BASTION_ADMIN_TOOLS BASTION_HELPERS BASTION_USER_TOOLS
+unset BASTION_ADMIN_GROUP BASTION_ADMIN_TOOLS BASTION_CLUSTER_STATUS_CACHE BASTION_CLUSTER_STATUS_STALE_SECONDS BASTION_HELPERS BASTION_USER_TOOLS
 EOF
+
+  [[ -s "$tmp" ]] || die "Generated profile is empty: $tmp"
 
   echo "$tmp"
 }
