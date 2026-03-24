@@ -3,11 +3,26 @@ csr:
   signerName: kubernetes.io/kube-apiserver-client
   expirationSeconds: 604800
   groupPrefix: "k8s-"
-# Public base policy for merge mode.
-# Keep this file free of environment-specific users/groups.
+# Test cluster configuration (mock values)
 cluster:
-  name: placeholder-cluster
-  server: https://placeholder-api-server:6443
+  name: test-cluster
+  server: https://test-api-server:6443
   caFile: /etc/kubernetes/ca.crt
-groups: {}
-users: {}
+# Test groups
+groups:
+  k8s-test-group:
+    namespaces:
+      - test-namespace
+      - default
+# Test environment - defines test users
+users:
+  alice:
+    ensureGroups:
+      - k8s-test-group
+  bob:
+    ensureGroups:
+      - k8s-test-group
+  # Added during reconcile test
+  charlie:
+    ensureGroups:
+      - k8s-test-group

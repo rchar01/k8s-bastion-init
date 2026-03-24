@@ -57,9 +57,10 @@ tests/
 	│   ├── test-reconcile.sh      # Test policy updates
 	│   └── test-components.sh     # Test individual phases
 ├── verify/
-│   ├── check-machine.sh       # Verify containerd, tools, yq
-│   ├── check-users.sh         # Verify groups and memberships
-│   └── check-policy.sh        # Verify policy rendering
+	│   ├── check-machine.sh       # Verify containerd, tools, yq
+	│   ├── check-users.sh         # Verify groups and memberships
+	│   ├── check-policy.sh        # Verify policy rendering
+	│   └── check-hardening.sh     # Verify script permissions and sudo path hardening
 └── run-all.sh                 # Main test orchestrator
 ```
 
@@ -141,6 +142,7 @@ Run verification scripts from the host shell (not inside the container):
 ./tests/verify/check-machine.sh
 ./tests/verify/check-users.sh
 ./tests/verify/check-policy.sh
+./tests/verify/check-hardening.sh
 ```
 
 ## What is Tested
@@ -171,6 +173,13 @@ Run verification scripts from the host shell (not inside the container):
 - ✅ Reconcile workflow (updates existing installation)
 - ✅ User deactivation workflow after policy removal
 - ✅ Component isolation (can run phases separately)
+
+### Hardening
+- ✅ `/etc/sudoers.d/bastion-path` secure_path drop-in exists
+- ✅ Admin scripts in `/usr/local/sbin` are mode `0750`
+- ✅ Regular users cannot run admin scripts without `sudo`
+- ✅ `sudo` can execute admin scripts from `/usr/local/sbin`
+- ✅ CSR timer services use `/etc/kubernetes/admin.kubeconfig`
 
 ## Test Users
 

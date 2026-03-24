@@ -81,7 +81,7 @@ print_row() {
 list_kube_dir() {
   local dir="$1"
 
-  [[ "$SHOW_CONTENTS" -eq 1 ]] || return
+  [[ "$SHOW_CONTENTS" -eq 1 ]] || return 0
 
   local listing
   listing="$(ls -la "$dir" 2>/dev/null | sed 's/[[:space:]]\+/ /g' | tail -n +2 || true)"
@@ -122,6 +122,8 @@ audit_users() {
 # --------------------------------------------------
 
 main() {
+  require_root
+
   need_cmd ls
   need_cmd sed
   need_cmd tail

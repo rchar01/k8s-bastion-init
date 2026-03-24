@@ -184,6 +184,8 @@ process_csr() {
 # --------------------------------------------------
 
 main() {
+  require_root
+
   need_cmd kubectl
   need_cmd openssl
   need_cmd base64

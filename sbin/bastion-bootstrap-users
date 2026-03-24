@@ -83,6 +83,7 @@ install_file_if_changed() {
   install -d "$(dirname "$dst")"
 
   if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    chmod "$mode" "$dst"
     return 1
   fi
 
@@ -218,6 +219,7 @@ main() {
   need_cmd_plain readlink
   need_cmd_plain install
   need_cmd_plain cmp
+  need_cmd_plain chmod
 
   load_system_libs
   require_root

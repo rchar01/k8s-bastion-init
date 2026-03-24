@@ -97,6 +97,7 @@ verify_phase() {
 	run_test "Machine Verification" "$SCRIPT_DIR/verify/check-machine.sh" || true
 	run_test "Users Verification" "$SCRIPT_DIR/verify/check-users.sh" || true
 	run_test "Policy Verification" "$SCRIPT_DIR/verify/check-policy.sh" || true
+	run_test "Hardening Verification" "$SCRIPT_DIR/verify/check-hardening.sh" || true
 }
 
 # Cleanup phase

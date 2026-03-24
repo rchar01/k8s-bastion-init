@@ -65,6 +65,7 @@ BIN_DST="/usr/local/bin"
 SBIN_DST="/usr/local/sbin"
 INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
 MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
+SUDOERS_PATH_FILE="/etc/sudoers.d/bastion-path"
 
 # --------------------------------------------------
 # Helpers (no shared libs yet)
@@ -82,6 +83,7 @@ install_file_if_changed() {
   install -d "$(dirname "$dst")"
 
   if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    chmod "$mode" "$dst"
     return 1
   fi
 
@@ -217,7 +219,7 @@ install_runtime() {
 
   log_info "Installing admin commands to $SBIN_DST"
   install -d "$SBIN_DST"
-  install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0755" "*"
+  install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0750" "*"
 
   # Record installed version
   local src_ver; src_ver="$(read_source_version)"
@@ -225,6 +227,25 @@ install_runtime() {
   printf '%s\n' "$src_ver" >"$INSTALLED_VERSION_FILE"
   chmod 0644 "$INSTALLED_VERSION_FILE"
   log_info "Installed bastion version: $src_ver"
+}
+
+install_sudo_secure_path() {
+  local tmp
+  tmp="$(mktemp)"
+
+  printf '%s\n' 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"' >"$tmp"
+
+  if command -v visudo >/dev/null 2>&1; then
+    visudo -cf "$tmp" >/dev/null || die "Generated sudoers config failed validation"
+  else
+    log_warn "visudo not found; installing sudoers path config without validation"
+  fi
+
+  install -d /etc/sudoers.d
+  install -m 0440 "$tmp" "$SUDOERS_PATH_FILE"
+  rm -f "$tmp"
+
+  log_info "Installed sudo secure_path config: $SUDOERS_PATH_FILE"
 }
 
 apply_machine_state() {
@@ -265,6 +286,8 @@ main() {
   need_cmd_plain readlink
   need_cmd_plain install
   need_cmd_plain cmp
+  need_cmd_plain chmod
+  need_cmd_plain mktemp
 
   load_libs_from_source
   require_root
@@ -281,6 +304,7 @@ main() {
   log_info "Installed version: ${inst_ver:-none}"
 
   install_runtime
+  install_sudo_secure_path
 
   if [[ "$MODE" == "init" ]]; then
     # Destructive cleanup only when node artifacts exist

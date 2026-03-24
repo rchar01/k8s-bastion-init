@@ -176,6 +176,8 @@ render_policy() {
 }
 
 main() {
+  require_root
+
   need_cmd yq
   need_cmd mktemp
   need_cmd install

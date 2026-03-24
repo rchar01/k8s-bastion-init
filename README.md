@@ -263,10 +263,12 @@ This toolkit is designed to be run as root for bootstrap and reconcile and will 
 
 Common changes include:
 - Installs scripts and libraries under `/usr/local/bin`, `/usr/local/sbin`, `/usr/local/lib/bastion`
+- Installs admin scripts in `/usr/local/sbin` with restricted execute permissions (`0750`)
 - Writes policy and kube-related files under `/etc/kubernetes`
 - Installs login profile under `/etc/profile.d`
 - Installs and manages `containerd` via systemd
 - Installs and enables CSR processing timers under `/etc/systemd/system`
+- Installs `/etc/sudoers.d/bastion-path` to ensure `sudo` resolves `/usr/local/sbin` commands
 
 ## Security Model
 

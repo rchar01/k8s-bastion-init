@@ -110,6 +110,8 @@ delete_csr() {
 # --------------------------------------------------
 
 main() {
+  require_root
+
   need_cmd kubectl
   need_cmd jq
   need_cmd date

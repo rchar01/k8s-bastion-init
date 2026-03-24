@@ -284,6 +284,11 @@ These scripts assume:
 - **`bastion-bootstrap-users`**: validates prerequisites, installs policy, applies user state, and verifies setup
 - **`bastion-render-policy`**: merges public, private, and environment policy layers and records `.policy-env`
 
+Security defaults applied during machine bootstrap:
+
+- admin scripts in `/usr/local/sbin` are installed with mode `0750`
+- `/etc/sudoers.d/bastion-path` is installed so `sudo` can resolve `/usr/local/sbin` commands
+
 During users bootstrap, the admin kubeconfig template is also installed as:
 
 - `/etc/kubernetes/admin.kubeconfig` (used by CSR approver/cleanup systemd services)
@@ -575,3 +580,4 @@ WantedBy=timers.target
 
 - If `echo $KUBECONFIG` is empty, ensure the user is in the expected Unix group, `/etc/profile.d/bastion-login.sh` exists, and the user started a new login shell
 - If `kubectl` talks to `localhost:6443`, the kubeconfig `clusters[].cluster.server` value is wrong; update it to the real API endpoint
+- If `sudo bastion-<command>` says `command not found`, verify `/etc/sudoers.d/bastion-path` exists and `sudo -V` shows `/usr/local/sbin` in `secure_path`
