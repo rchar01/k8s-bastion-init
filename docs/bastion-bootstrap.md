@@ -41,6 +41,11 @@ Make sure these inputs are ready:
 - `kubeconfigs/k8s-admin.kubeconfig` contains a real cluster-admin kubeconfig template
 - `cluster.caFile` in the rendered policy points to a readable CA file on the bastion host
 
+Recommended CA file location on bastion hosts:
+
+- Use `/etc/kubernetes/ca.crt` as the default `cluster.caFile` path
+- Avoid `/etc/kubernetes/pki/ca.crt` on bastion hosts running `--init`, because node cleanup can remove `/etc/kubernetes/pki`
+
 ### Required Operator Scheduling
 
 Bootstrap and reconcile install and enable systemd timers for CSR processing by default.
@@ -107,7 +112,7 @@ Example split:
 cluster:
   name: production-cluster
   server: https://prod-k8s-api.internal:6443
-  caFile: /etc/kubernetes/pki/ca.crt
+  caFile: /etc/kubernetes/ca.crt
 
 groups:
   k8s-production-admins:
@@ -176,6 +181,53 @@ sudo ./sbin/bastion-bootstrap-users --init --source .
 
 Do not treat this as the preferred production workflow.
 
+Example non-production policy (for local testing only):
+
+```yaml
+# access-policy.yaml
+apiVersion: bastion.access/v1
+csr:
+  signerName: kubernetes.io/kube-apiserver-client
+  expirationSeconds: 604800
+  groupPrefix: "k8s-"
+
+cluster:
+  name: test-cluster
+  server: https://test-api-server:6443
+  caFile: /etc/kubernetes/ca.crt
+
+groups:
+  k8s-group1:
+    namespaces:
+      - namespace-group1a
+      - namespace-group1b
+  k8s-group2:
+    namespaces:
+      - namespace-group2
+  k8s-test-group:
+    namespaces:
+      - test-namespace
+      - default
+
+users:
+  user1:
+    ensureGroups:
+      - k8s-group1
+  user2:
+    ensureGroups:
+      - k8s-group1
+      - k8s-group2
+  alice:
+    ensureGroups:
+      - k8s-test-group
+  bob:
+    ensureGroups:
+      - k8s-test-group
+  charlie:
+    ensureGroups:
+      - k8s-test-group
+```
+
 Simple-mode reconcile after policy changes:
 
 ```bash
@@ -232,6 +284,10 @@ These scripts assume:
 - **`bastion-bootstrap-users`**: validates prerequisites, installs policy, applies user state, and verifies setup
 - **`bastion-render-policy`**: merges public, private, and environment policy layers and records `.policy-env`
 
+During users bootstrap, the admin kubeconfig template is also installed as:
+
+- `/etc/kubernetes/admin.kubeconfig` (used by CSR approver/cleanup systemd services)
+
 ### Additional Admin Scripts
 
 - **`bastion-bootstrap-user-groups`**: creates groups and updates supplementary group membership from policy
@@ -242,6 +298,10 @@ These scripts assume:
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
 - **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
+
+CSR timer services run `kubectl` with:
+
+- `KUBECONFIG=/etc/kubernetes/admin.kubeconfig`
 
 ### User Script
 
@@ -295,6 +355,7 @@ Use this checklist before and immediately after the first production bootstrap.
 - verify `k8s-bastion-policy/base.yaml` and `k8s-bastion-policy/envs/<env>.yaml` contain the intended production users and groups
 - verify `cluster.server` points to the real Kubernetes API endpoint
 - verify `cluster.caFile` exists on the bastion host and matches the target cluster CA
+- prefer `/etc/kubernetes/ca.crt` for `cluster.caFile` on bastion hosts
 - verify `kubeconfigs/k8s-admin.kubeconfig` is the intended admin template for the target cluster
 - review `k8s-admin` membership carefully before the first init
 - run `./download.sh` or `make download`

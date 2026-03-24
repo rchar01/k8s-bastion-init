@@ -40,6 +40,7 @@ APPROVER_ON_BOOT="1min"
 APPROVER_ON_ACTIVE="2min"
 CLEANUP_ON_BOOT="10min"
 CLEANUP_ON_ACTIVE="6h"
+KUBECONFIG_PATH="/etc/kubernetes/admin.kubeconfig"
 
 ACTION=""
 
@@ -109,6 +110,7 @@ Description=Bastion CSR approver
 
 [Service]
 Type=oneshot
+Environment=KUBECONFIG=${KUBECONFIG_PATH}
 ExecStart=/usr/local/sbin/bastion-csr-approver
 EOF
 }
@@ -137,6 +139,7 @@ Description=Bastion CSR cleanup
 
 [Service]
 Type=oneshot
+Environment=KUBECONFIG=${KUBECONFIG_PATH}
 ExecStart=/usr/local/sbin/bastion-csr-cleanup
 EOF
 }
@@ -174,7 +177,7 @@ install_if_changed() {
 install_units() {
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap 'rm -rf "${tmp:-}"' EXIT
 
   write_approver_service "$tmp/$APPROVER_SERVICE"
   write_approver_timer "$tmp/$APPROVER_TIMER"

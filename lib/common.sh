@@ -1,5 +1,9 @@
 log() { echo "[$PROGRAM_NAME] $*"; }
 
+# Normalize PATH so bastion-installed commands in /usr/local are resolvable
+# under sudo/root environments that omit sbin or /usr/local entries.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 die() {
 	local msg="$*"
 	if declare -F log_error >/dev/null 2>&1; then

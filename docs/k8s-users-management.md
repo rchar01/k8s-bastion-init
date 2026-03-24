@@ -83,7 +83,7 @@ Important:
 
 - renewal approval is based on current Unix group membership, not a second lookup of `users.<name>` in policy
 - users should log out and back in after group changes before running `bastion-kube-renew`
-- `cluster.caFile` in policy must exist and be readable on the bastion host
+- `cluster.caFile` in policy must exist and be readable on the bastion host (recommended default: `/etc/kubernetes/ca.crt`)
 
 ## Approver Validation Behavior
 

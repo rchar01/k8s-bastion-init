@@ -150,8 +150,10 @@ csr:
 cluster:
   name: my-cluster
   server: https://10.0.0.1:6443
-  caFile: /etc/kubernetes/pki/ca.crt
+  caFile: /etc/kubernetes/ca.crt
 ```
+
+Recommended: use `/etc/kubernetes/ca.crt` on bastion hosts. Avoid `/etc/kubernetes/pki/ca.crt` for bastion `--init` flows, because node cleanup can remove `/etc/kubernetes/pki`.
 
 Policy merge mode uses these layers:
 
@@ -174,6 +176,10 @@ This repository intentionally keeps different configuration inputs separate:
 - `user-tools.txt` - tool names shown to regular bastion users
 - `admin-tools.txt` - additional tool names shown to `k8s-admin` users
 - `kubeconfigs/k8s-admin.kubeconfig` - admin kubeconfig template installed for privileged users
+
+Runtime files created during bootstrap:
+
+- `/etc/kubernetes/admin.kubeconfig` - host-level kubeconfig used by `bastion-csr-approver` and `bastion-csr-cleanup` services
 
 Additional repository metadata and generated state:
 

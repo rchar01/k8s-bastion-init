@@ -62,6 +62,7 @@ LIB_DST="/usr/local/lib/bastion"
 BIN_DST="/usr/local/bin"
 SBIN_DST="/usr/local/sbin"
 POLICY_DST="/etc/kubernetes/access-policy.yaml"
+ADMIN_KUBECONFIG_DST="/etc/kubernetes/admin.kubeconfig"
 INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
 MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
 USERS_INIT_MARKER="${LIB_DST}/.users-init-done"
@@ -143,6 +144,19 @@ install_policy() {
   fi
 }
 
+install_service_admin_kubeconfig() {
+  local src="$SOURCE_DIR/kubeconfigs/k8s-admin.kubeconfig"
+
+  log_info "Installing service kubeconfig to $ADMIN_KUBECONFIG_DST"
+  if install_file_if_changed "$src" "$ADMIN_KUBECONFIG_DST" "0600"; then
+    log_info "Service kubeconfig updated: $ADMIN_KUBECONFIG_DST"
+  else
+    log_debug "Service kubeconfig unchanged: $ADMIN_KUBECONFIG_DST"
+  fi
+
+  chown root:root "$ADMIN_KUBECONFIG_DST"
+}
+
 apply_users_state() {
   # At this point scripts should be in /usr/local/{bin,sbin} and policy installed.
   need_cmd bastion-bootstrap-user-groups
@@ -214,6 +228,7 @@ main() {
   log_info "Source: $SOURCE_DIR"
 
   install_policy
+  install_service_admin_kubeconfig
   apply_users_state
   verify_users
 }

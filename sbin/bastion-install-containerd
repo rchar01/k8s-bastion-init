@@ -68,8 +68,17 @@ installed_runc_version() {
 
 install_dependencies() {
   log_info "Installing OS dependencies..."
-  # curl-minimal is present on many Rocky/RHEL images; installing full curl can conflict.
-  dnf install -y iproute iptables tar gzip curl-minimal >/dev/null
+  local curl_pkg="curl-minimal"
+
+  # Avoid curl package conflicts on RHEL-family hosts.
+  # If curl is already installed, keep using it; otherwise prefer curl-minimal.
+  if rpm -q curl >/dev/null 2>&1; then
+    curl_pkg="curl"
+  elif rpm -q curl-minimal >/dev/null 2>&1; then
+    curl_pkg="curl-minimal"
+  fi
+
+  dnf install -y iproute iptables tar gzip "$curl_pkg" >/dev/null
 }
 
 check_artifacts() {

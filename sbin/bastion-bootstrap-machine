@@ -27,6 +27,10 @@ EOF
 MODE=""
 SOURCE_DIR=""
 
+# Ensure admin command install locations are discoverable even when
+# root's default PATH omits sbin directories.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
