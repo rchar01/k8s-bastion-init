@@ -83,6 +83,9 @@ test_phase() {
   # Test 2: Full init
   run_test "Full Init Test" "$SCRIPT_DIR/scenarios/test-full-init.sh"
 
+  # Test 2.1: Bootstrap daemon runtime
+  run_test "Bootstrap Daemon Test" "$SCRIPT_DIR/scenarios/test-bootstrap-daemon.sh"
+
   # Test 3: Full reconcile
   run_test "Reconcile Test" "$SCRIPT_DIR/scenarios/test-reconcile.sh"
 

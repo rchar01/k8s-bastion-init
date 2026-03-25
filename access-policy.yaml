@@ -12,6 +12,15 @@ bootstrap:
   ttl:
     defaultSeconds: 900
     maxSeconds: 1800
+daemon:
+  allowedLoginGroup: bastion-users
+  socket:
+    path: /run/bastion-bootstrapd/bootstrapd.sock
+  request:
+    maxBytes: 16384
+    timeoutSeconds: 15
+  rateLimit:
+    failureBackoffSeconds: 60
 # Test cluster configuration (mock values)
 cluster:
   name: test-cluster

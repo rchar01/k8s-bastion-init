@@ -112,6 +112,31 @@ check_service_kubeconfig() {
   fi
 }
 
+check_bootstrap_daemon() {
+  log_info "Checking bootstrap daemon service and socket..."
+
+  if podman exec "$CONTAINER_NAME" test -f /etc/systemd/system/bastion-bootstrapd.service; then
+    log_success "Bootstrap daemon unit exists"
+  else
+    log_fail "Missing /etc/systemd/system/bastion-bootstrapd.service"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" grep -q '^ExecStart=/usr/local/sbin/bastion-bootstrapd$' /etc/systemd/system/bastion-bootstrapd.service; then
+    log_success "Bootstrap daemon unit ExecStart is correct"
+  else
+    log_fail "Bootstrap daemon ExecStart is incorrect"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" systemctl is-enabled bastion-bootstrapd.service > /dev/null 2>&1; then
+    log_success "Bootstrap daemon service is enabled"
+  else
+    log_fail "Bootstrap daemon service is not enabled"
+    return 1
+  fi
+}
+
 main() {
   log_info "=== Verifying Security Hardening ==="
 
@@ -122,6 +147,7 @@ main() {
   check_non_root_denied || failed=1
   check_sudo_resolution || failed=1
   check_service_kubeconfig || failed=1
+  check_bootstrap_daemon || failed=1
 
   log_info "=== Hardening Verification Complete ==="
 

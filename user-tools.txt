@@ -18,6 +18,7 @@ bastion-kube-renew
 bastion-renew-cert
 bastion-kube-state
 bastion-login-bootstrap
+bastion-bootstrapd-client
 bastion-enroll-cert
 bastion-kubeconfig-expiry
 bastion-version

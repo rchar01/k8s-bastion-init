@@ -193,6 +193,7 @@ apply_users_state() {
   need_cmd bastion-manage-csr-timers
   need_cmd bastion-manage-cluster-status-timer
   need_cmd bastion-manage-cert-renew-timer
+  need_cmd bastion-manage-bootstrapd
   need_cmd bastion-bootstrap-token-issue
   need_cmd bastion-bootstrap-token-revoke
 
@@ -219,6 +220,9 @@ apply_users_state() {
 
   log_info "Installing CSR approver and cleanup timers"
   bastion-manage-csr-timers --install
+
+  log_info "Installing bootstrap daemon service"
+  bastion-manage-bootstrapd --install
 
   log_info "Installing certificate renewal timer"
   bastion-manage-cert-renew-timer --install

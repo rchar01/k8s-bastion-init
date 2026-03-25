@@ -14,11 +14,13 @@ env/
 ENV/
 .pytest_cache/
 .mypy_cache/
+.pytype/
 .ruff_cache/
 .tox/
 .nox/
 .coverage
 .coverage.*
+*.py,cover
 htmlcov/
 dist/
 build/

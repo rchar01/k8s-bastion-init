@@ -19,10 +19,22 @@ Users do not get long-lived static kubeconfig credentials.
 
 1. User starts an interactive bastion login session.
 2. `bastion-login-bootstrap` checks local credential state (`missing|valid|renewable|expired|broken`).
-3. For `missing|expired|broken`, root helper obtains short-lived bootstrap kubeconfig from in-cluster issuer and writes `~/.kube/bootstrap`.
+3. For `missing|expired|broken`, `bastion-login-bootstrap` requests short-lived bootstrap kubeconfig from local root daemon (`bastion-bootstrapd`), which writes `~/.kube/bootstrap`.
 4. `bastion-enroll-cert` submits CSR with signer `platform.example.io/client`, waits for signing, and atomically writes `~/.kube/user.crt`, `~/.kube/user.key`, and `~/.kube/config`.
 5. Bootstrap kubeconfig is removed and token revoke is attempted best-effort.
 6. Background renewal timer runs every 30 minutes; users in renew window are renewed automatically with current valid cert.
+
+## Login Daemon Contract
+
+Login auto-bootstrap uses local root daemon `bastion-bootstrapd`.
+
+- socket path comes from policy: `.daemon.socket.path` (default `/run/bastion-bootstrapd/bootstrapd.sock`)
+- client command: `bastion-bootstrapd-client`
+- supported daemon actions: `health`, `issue-bootstrap`, `revoke-bootstrap`
+- daemon derives caller identity from Unix socket peer credentials and enforces local authz
+- daemon is the only privileged bastion-side component allowed to call issuer for login bootstrap
+
+The daemon writes only temporary `~/.kube/bootstrap`. Final `~/.kube/config`, `~/.kube/user.crt`, and `~/.kube/user.key` are written by user-side enrollment flow.
 
 ## Core Files
 
@@ -48,6 +60,7 @@ Token issuance dependency:
 | `sudo bastion-bootstrap-kubeconfig --user <user>` | Create bootstrap kubeconfig for one user (token-backed) |
 | `sudo bastion-bootstrap-kubeconfig --all` | Create bootstrap kubeconfigs for all policy users present on host |
 | `sudo bastion-bootstrap-token-revoke --token-id <id>` | Revoke bootstrap token via issuer workload |
+| `sudo bastion-manage-bootstrapd --install` | Install or update login bootstrap daemon service |
 | `bastion-login-bootstrap --quiet` | Login-triggered auto-bootstrap orchestration (best-effort) |
 | `bastion-enroll-cert --reason login-recovery` | Bootstrap-based enrollment using temporary `~/.kube/bootstrap` |
 | `bastion-kube-renew` | User self-service certificate renewal |

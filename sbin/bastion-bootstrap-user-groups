@@ -42,6 +42,7 @@ source "${LIB_DIR}/common.sh"
 # --------------------------------------------------
 
 POLICY="/etc/bastion/access-policy.yaml"
+DAEMON_LOGIN_GROUP=""
 
 usage() {
   cat << EOF
@@ -73,6 +74,8 @@ parse_args() {
 
 validate_inputs() {
   [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
+  DAEMON_LOGIN_GROUP="$(yq -r '.daemon.allowedLoginGroup // ""' "$POLICY")"
+  [[ -n "$DAEMON_LOGIN_GROUP" ]] || die "daemon.allowedLoginGroup missing in policy"
 }
 
 # --------------------------------------------------
@@ -147,6 +150,9 @@ process_users() {
       ensure_group_exists "$group"
       ensure_user_in_group "$user" "$group"
     done < <(get_user_groups "$user")
+
+    ensure_group_exists "$DAEMON_LOGIN_GROUP"
+    ensure_user_in_group "$user" "$DAEMON_LOGIN_GROUP"
 
   done
 }

@@ -228,7 +228,7 @@ Bastion runtime directories and state:
 
 - `/etc/bastion` - bastion-owned host configuration directory
 - `/run/bastion-cluster-status.json` - root-written cluster status cache consumed by login banner
-- `/var/lib/bastion/bootstrap-tokens` - root-owned local token issuance metadata
+- `/run/bastion-bootstrapd` - root-owned daemon runtime directory (socket, token cache, failure cache)
 - `/var/log/bastion-audit.log` - append-only audit log produced by bastion scripts
 - `~/.kube/bootstrap` - per-user temporary bootstrap kubeconfig for enrollment/recovery only
 - `~/.kube/user.crt`, `~/.kube/user.key`, `~/.kube/config` - per-user operating credentials and kubeconfig
@@ -262,6 +262,7 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `./bastion_reconcile.sh <env>` - production reconcile wrapper for Mode 2
 - `sudo bastion-disable-user --user <user>` - disable bastion-managed Kubernetes access for a target user
 - `sudo bastion-manage-csr-timers --remove` - remove default CSR approver/cleanup systemd timers
+- `sudo bastion-manage-bootstrapd --install` - install root-owned local login bootstrap daemon
 - `sudo bastion-manage-cert-renew-timer --install` - install transparent renewal timer
 - `sudo bastion-manage-cluster-status-timer --install` - install timer that refreshes login-banner cluster status cache
 - `sudo bastion-cluster-probe` - run one-shot cluster status cache refresh

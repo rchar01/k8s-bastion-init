@@ -97,6 +97,20 @@ check_policy_content() {
     log_fail "Bootstrap TTL policy missing"
     return 1
   fi
+
+  if podman exec "$CONTAINER_NAME" yq -e '.daemon.allowedLoginGroup' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
+    log_success "Daemon allowed login group policy present"
+  else
+    log_fail "Daemon allowed login group policy missing"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" yq -e '.daemon.socket.path' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
+    log_success "Daemon socket path policy present"
+  else
+    log_fail "Daemon socket path policy missing"
+    return 1
+  fi
 }
 
 # Check environment marker

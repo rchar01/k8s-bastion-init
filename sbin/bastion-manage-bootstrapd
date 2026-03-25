@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-manage-bootstrapd"
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/policy.sh"
+
+SYSTEMD_DIR="/etc/systemd/system"
+SERVICE_NAME="bastion-bootstrapd.service"
+
+ACTION=""
+
+usage() {
+  cat << EOF
+Usage:
+  bastion-manage-bootstrapd --install
+  bastion-manage-bootstrapd --remove
+
+Options:
+  --install   Install/update and enable/start daemon service
+  --remove    Stop/disable and remove daemon service unit
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install)
+        ACTION="install"
+        shift
+        ;;
+      --remove)
+        ACTION="remove"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$ACTION" ]] || die "Specify --install or --remove"
+}
+
+write_service() {
+  local dst="$1"
+  cat > "$dst" << EOF
+[Unit]
+Description=Bastion bootstrap daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/bastion-bootstrapd
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=bastion-bootstrapd
+RuntimeDirectoryMode=0750
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+ReadWritePaths=/run/bastion-bootstrapd /home
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+install_if_changed() {
+  local src="$1"
+  local dst="$2"
+
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    log_info "Unit unchanged: $dst"
+    return 1
+  fi
+
+  install -m 0644 "$src" "$dst"
+  log_info "Installed unit: $dst"
+  return 0
+}
+
+install_unit() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "${tmp:-}"' EXIT
+
+  policy_read
+  getent group "$DAEMON_ALLOWED_LOGIN_GROUP" > /dev/null 2>&1 || die "Daemon login group not found: $DAEMON_ALLOWED_LOGIN_GROUP"
+
+  write_service "$tmp/$SERVICE_NAME"
+  install_if_changed "$tmp/$SERVICE_NAME" "$SYSTEMD_DIR/$SERVICE_NAME" || true
+
+  systemctl daemon-reload
+  systemctl enable --now "$SERVICE_NAME"
+  log_info "Bootstrap daemon service installed and active"
+}
+
+remove_unit() {
+  systemctl disable --now "$SERVICE_NAME" > /dev/null 2>&1 || true
+  rm -f "$SYSTEMD_DIR/$SERVICE_NAME"
+  systemctl daemon-reload
+  log_info "Bootstrap daemon service removed"
+}
+
+main() {
+  require_root
+  need_cmd systemctl
+  need_cmd install
+  need_cmd cmp
+  need_cmd mktemp
+  need_cmd getent
+  need_cmd python3
+
+  parse_args "$@"
+
+  case "$ACTION" in
+    install)
+      install_unit
+      ;;
+    remove)
+      remove_unit
+      ;;
+  esac
+}
+
+main "$@"

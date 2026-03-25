@@ -217,6 +217,16 @@ bootstrap:
     defaultSeconds: 900
     maxSeconds: 1800
 
+daemon:
+  allowedLoginGroup: bastion-users
+  socket:
+    path: /run/bastion-bootstrapd/bootstrapd.sock
+  request:
+    maxBytes: 16384
+    timeoutSeconds: 15
+  rateLimit:
+    failureBackoffSeconds: 60
+
 cluster:
   name: test-cluster
   server: https://test-api-server:6443
@@ -330,6 +340,7 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
 - **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
+- **`bastion-manage-bootstrapd`**: installs/removes root-owned login bootstrap daemon service
 - **`bastion-manage-cert-renew-timer`**: installs/removes transparent cert renewal timer
 - **`bastion-cert-renew-all`**: root-run dispatcher for per-user renewal checks
 - **`bastion-cluster-probe`**: writes compact cluster status cache for login banner
@@ -351,10 +362,28 @@ CSR timer services run `kubectl` with:
 Auto-bootstrap and renewal behavior:
 
 - login flow is best-effort and must not block interactive shell access
+- privileged login bootstrap issuance is handled by root daemon `bastion-bootstrapd` over local Unix socket
 - per-user lock/state files live under `~/.cache/bastion-bootstrap/`
 - enrollment writes file-based credentials: `~/.kube/user.crt`, `~/.kube/user.key`, and `~/.kube/config`
 - renewal runs as user context and does not call issuer API
 - expired certs are recovered via login bootstrap flow, not in-band renewal
+
+### Login Bootstrap Daemon
+
+`bastion-bootstrapd` is the root-owned local daemon used by login auto-bootstrap.
+
+- service: `bastion-bootstrapd.service`
+- socket path (policy): `/run/bastion-bootstrapd/bootstrapd.sock`
+- transport: Unix domain socket, one JSON request per connection
+- allowed actions: `health`, `issue-bootstrap`, `revoke-bootstrap`
+- caller identity: derived from socket peer credentials (UID/GID/PID), never trusted from client payload
+- local authz: non-root user, in policy-configured login group (default `bastion-users`), allowed home path
+
+Security boundary:
+
+- daemon performs privileged bootstrap token issuance and writes `~/.kube/bootstrap`
+- user-side scripts keep key generation, CSR submit/poll, final kubeconfig rotation, and renewal
+- renewal remains user-context and does not depend on daemon
 
 ## Operator Inputs
 
@@ -370,7 +399,7 @@ The bastion creates and uses these host paths:
 
 - `/etc/bastion/` - bastion-owned host configuration (`access-policy.yaml`, `admin.kubeconfig`, CA file path if you keep CA there)
 - `/run/bastion-cluster-status.json` - root-written cluster probe cache consumed by login banner
-- `/var/lib/bastion/bootstrap-tokens/` - root-owned local bootstrap token metadata
+- `/run/bastion-bootstrapd/` - root-owned daemon runtime state (socket, token cache, failure cache)
 - `/var/log/bastion-audit.log` - bastion audit events
 - `/etc/profile.d/bastion-login.sh` - generated login profile shown for interactive SSH sessions
 - `~/.kube/bootstrap` - temporary bootstrap kubeconfig used only for enrollment/recovery

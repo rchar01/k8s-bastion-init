@@ -39,7 +39,7 @@ policy-driven groups, and Kubernetes certificate workflows fit together.
 2. Policy defines users, groups, CSR settings, and cluster connection data.
 3. Bastion scripts create or update host group membership from policy.
 4. Users receive bootstrap kubeconfigs or admin kubeconfigs, depending on role.
-5. Login auto-bootstrap (`bastion-login-bootstrap`) recovers missing/expired/broken credentials; renewal timer and `bastion-kube-renew` handle in-band renewals.
+5. Login auto-bootstrap (`bastion-login-bootstrap`) recovers missing/expired/broken credentials through local root daemon `bastion-bootstrapd`; renewal timer and `bastion-kube-renew` handle in-band renewals.
 6. `bastion-csr-approver` validates signer, CN, requested groups, and current
    host group membership.
 7. Kubernetes issues a short-lived client certificate.

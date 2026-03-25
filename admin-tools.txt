@@ -12,6 +12,7 @@ bastion-disable-user
 bastion-csr-approver
 bastion-csr-cleanup
 bastion-manage-csr-timers
+bastion-manage-bootstrapd
 bastion-manage-cert-renew-timer
 bastion-cluster-probe
 bastion-manage-cluster-status-timer

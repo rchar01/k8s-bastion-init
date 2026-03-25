@@ -97,6 +97,34 @@ need_cmd_plain() {
   command -v "$1" > /dev/null 2>&1 || die_plain "Missing command: $1"
 }
 
+ensure_python3_runtime() {
+  if command -v python3 > /dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v dnf > /dev/null 2>&1; then
+    log_info "Installing python3 via dnf"
+    dnf install -y python3
+    return 0
+  fi
+
+  if command -v apt-get > /dev/null 2>&1; then
+    log_info "Installing python3 via apt-get"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y python3
+    return 0
+  fi
+
+  if command -v zypper > /dev/null 2>&1; then
+    log_info "Installing python3 via zypper"
+    zypper --non-interactive install python3
+    return 0
+  fi
+
+  die "python3 is required but no supported package manager found"
+}
+
 # Install/copy only if different (cmp). Keeps idempotency.
 install_file_if_changed() {
   local src="$1" dst="$2" mode="$3"
@@ -224,7 +252,6 @@ validate_source_layout() {
   [[ -d "$SOURCE_DIR/lib" ]] || die "Invalid source dir (missing lib): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/bin" ]] || die "Invalid source dir (missing bin): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/sbin" ]] || die "Invalid source dir (missing sbin): $SOURCE_DIR"
-  [[ -d "$SOURCE_DIR/libexec" ]] || die "Invalid source dir (missing libexec): $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/VERSION" ]] || die "Missing VERSION file in $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/download.conf" ]] || die "Missing download.conf in $SOURCE_DIR"
   # NOTE: We do NOT require access-policy.yaml here - that's for users bootstrap
@@ -234,6 +261,10 @@ install_runtime() {
   log_info "Installing bastion libraries to $LIB_DST"
   install -d "$LIB_DST"
   install_tree_dir "$SOURCE_DIR/lib" "$LIB_DST" "0644" "*.sh"
+  if [[ -d "$SOURCE_DIR/lib/python" ]]; then
+    install -d "$LIB_DST/python"
+    install_tree_dir "$SOURCE_DIR/lib/python" "$LIB_DST/python" "0644" "*.py"
+  fi
 
   log_info "Installing user commands to $BIN_DST"
   install -d "$BIN_DST"
@@ -243,9 +274,13 @@ install_runtime() {
   install -d "$SBIN_DST"
   install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0750" "*"
 
-  log_info "Installing privileged helpers to $LIBEXEC_DST"
-  install -d "$LIBEXEC_DST"
-  install_tree_dir "$SOURCE_DIR/libexec" "$LIBEXEC_DST" "0755" "*"
+  if [[ -d "$SOURCE_DIR/libexec" ]]; then
+    log_info "Installing privileged helpers to $LIBEXEC_DST"
+    install -d "$LIBEXEC_DST"
+    install_tree_dir "$SOURCE_DIR/libexec" "$LIBEXEC_DST" "0755" "*"
+  else
+    log_info "No libexec directory in source layout; skipping helper install"
+  fi
 
   # Record installed version
   local src_ver
@@ -330,6 +365,7 @@ main() {
   log_info "Source version: ${src_ver:-unknown}"
   log_info "Installed version: ${inst_ver:-none}"
 
+  ensure_python3_runtime
   install_runtime
   install_sudo_secure_path
 
