@@ -52,7 +52,7 @@ APPROVER_ON_BOOT="1min"
 APPROVER_ON_ACTIVE="2min"
 CLEANUP_ON_BOOT="10min"
 CLEANUP_ON_ACTIVE="6h"
-KUBECONFIG_PATH="/etc/kubernetes/admin.kubeconfig"
+KUBECONFIG_PATH="/etc/bastion/admin.kubeconfig"
 
 ACTION=""
 

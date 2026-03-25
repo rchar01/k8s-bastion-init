@@ -132,6 +132,9 @@ sudo ./bastion_init.sh prod
 # Production reconcile
 sudo ./bastion_reconcile.sh prod
 
+# Offline test bootstrap (no running Kubernetes API)
+sudo ./bastion_init.sh test --offline-bootstrap
+
 # User certificate renewal
 bastion-kube-renew
 
@@ -166,23 +169,33 @@ The access policy defines:
 - Kubernetes-oriented Linux groups
 - User-to-group mappings via `ensureGroups`
 
-Contract note: bastion CSR scripts enforce signer `platform.example.io/client` as a fixed integration constant.
+Contract note: bastion CSR and bootstrap scripts load signer and TTL values from installed policy at runtime.
 
 Minimal example:
 
 ```yaml
 csr:
   signerName: platform.example.io/client
-  expirationSeconds: 28800
+  ttl:
+    defaultSeconds: 28800
+    minSeconds: 3600
+    maxSeconds: 86400
+  renewal:
+    thresholdSeconds: 7200
   groupPrefix: "k8s-"
+
+bootstrap:
+  ttl:
+    defaultSeconds: 900
+    maxSeconds: 1800
 
 cluster:
   name: my-cluster
   server: https://10.0.0.1:6443
-  caFile: /etc/kubernetes/ca.crt
+  caFile: /etc/bastion/ca.crt
 ```
 
-Recommended: use `/etc/kubernetes/ca.crt` on bastion hosts. Avoid `/etc/kubernetes/pki/ca.crt` for bastion `--init` flows, because node cleanup can remove `/etc/kubernetes/pki`.
+Recommended: use `/etc/bastion/ca.crt` on bastion hosts.
 
 Policy merge mode uses these layers:
 
@@ -208,7 +221,18 @@ This repository intentionally keeps different configuration inputs separate:
 
 Runtime files created during bootstrap:
 
-- `/etc/kubernetes/admin.kubeconfig` - host-level kubeconfig used by `bastion-csr-approver` and `bastion-csr-cleanup` services
+- `/etc/bastion/access-policy.yaml` - installed bastion access policy (single source of truth)
+- `/etc/bastion/admin.kubeconfig` - host-level kubeconfig used by `bastion-csr-approver`, `bastion-csr-cleanup`, token issuer, and probe services
+
+Bastion runtime directories and state:
+
+- `/etc/bastion` - bastion-owned host configuration directory
+- `/run/bastion-cluster-status.json` - root-written cluster status cache consumed by login banner
+- `/var/lib/bastion/bootstrap-tokens` - root-owned local token issuance metadata
+- `/var/log/bastion-audit.log` - append-only audit log produced by bastion scripts
+- `~/.kube/bootstrap` - per-user temporary bootstrap kubeconfig for enrollment/recovery only
+- `~/.kube/user.crt`, `~/.kube/user.key`, `~/.kube/config` - per-user operating credentials and kubeconfig
+- `~/.cache/bastion-bootstrap/state.json` - per-user bootstrap state cache and lock context
 
 Additional repository metadata and generated state:
 
@@ -276,6 +300,8 @@ Quick run:
 make test
 ```
 
+Note: the container test suite runs bootstrap workflows in offline mode (`--offline-bootstrap`) and generates synthetic `~/.kube/bootstrap` files, so a live Kubernetes API is not required.
+
 The test suite validates:
 - Machine setup and tool installation
 - Policy rendering from a mock private repository
@@ -303,7 +329,7 @@ This toolkit is designed to be run as root for bootstrap and reconcile and will 
 Common changes include:
 - Installs scripts and libraries under `/usr/local/bin`, `/usr/local/sbin`, `/usr/local/lib/bastion`
 - Installs admin scripts in `/usr/local/sbin` with restricted execute permissions (`0750`)
-- Writes policy and kube-related files under `/etc/kubernetes`
+- Writes bastion configuration under `/etc/bastion`
 - Installs login profile under `/etc/profile.d`
 - Installs and manages `containerd` via systemd
 - Installs and enables CSR processing timers under `/etc/systemd/system`

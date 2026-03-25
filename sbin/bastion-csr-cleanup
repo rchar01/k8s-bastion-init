@@ -44,6 +44,7 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 
 # --------------------------------------------------
@@ -52,7 +53,7 @@ source "${LIB_DIR}/audit.sh"
 
 # default: 14 days
 RETENTION_SECONDS=$((14 * 24 * 60 * 60))
-POLICY="/etc/kubernetes/access-policy.yaml"
+POLICY="${POLICY_FILE}"
 
 usage() {
   cat << EOF
@@ -133,7 +134,8 @@ main() {
 
   parse_args "$@"
 
-  [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
+  POLICY_FILE="$POLICY"
+  policy_read
 
   log_debug "Retention seconds: $RETENTION_SECONDS"
 

@@ -29,8 +29,8 @@ check_policy_file() {
   fi
 
   # Check installed policy
-  if podman exec "$CONTAINER_NAME" test -f /etc/kubernetes/access-policy.yaml; then
-    log_success "Installed policy exists at /etc/kubernetes/access-policy.yaml"
+  if podman exec "$CONTAINER_NAME" test -f /etc/bastion/access-policy.yaml; then
+    log_success "Installed policy exists at /etc/bastion/access-policy.yaml"
   else
     log_fail "Installed policy not found"
     return 1
@@ -41,7 +41,7 @@ check_policy_file() {
 check_policy_valid() {
   log_info "Validating policy YAML..."
 
-  if podman exec "$CONTAINER_NAME" bash -c "yq '.' /etc/kubernetes/access-policy.yaml > /dev/null 2>&1"; then
+  if podman exec "$CONTAINER_NAME" bash -c "yq '.' /etc/bastion/access-policy.yaml > /dev/null 2>&1"; then
     log_success "Policy is valid YAML"
   else
     log_fail "Policy is not valid YAML"
@@ -54,7 +54,7 @@ check_policy_content() {
   log_info "Checking policy content..."
 
   # Check cluster config from base
-  if podman exec "$CONTAINER_NAME" yq '.cluster.name' /etc/kubernetes/access-policy.yaml | grep -q "test-cluster"; then
+  if podman exec "$CONTAINER_NAME" yq '.cluster.name' /etc/bastion/access-policy.yaml | grep -q "test-cluster"; then
     log_success "Cluster name from base policy present"
   else
     log_fail "Cluster name not found in policy"
@@ -62,14 +62,14 @@ check_policy_content() {
   fi
 
   # Check users from env overlay
-  if podman exec "$CONTAINER_NAME" yq '.users.alice' /etc/kubernetes/access-policy.yaml > /dev/null 2>&1; then
+  if podman exec "$CONTAINER_NAME" yq '.users.alice' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
     log_success "User alice from env overlay present"
   else
     log_fail "User alice not found in policy"
     return 1
   fi
 
-  if podman exec "$CONTAINER_NAME" yq '.users.bob' /etc/kubernetes/access-policy.yaml > /dev/null 2>&1; then
+  if podman exec "$CONTAINER_NAME" yq '.users.bob' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
     log_success "User bob from env overlay present"
   else
     log_fail "User bob not found in policy"
@@ -77,10 +77,24 @@ check_policy_content() {
   fi
 
   # Check groups
-  if podman exec "$CONTAINER_NAME" yq '.groups.k8s-test-group' /etc/kubernetes/access-policy.yaml > /dev/null 2>&1; then
+  if podman exec "$CONTAINER_NAME" yq '.groups.k8s-test-group' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
     log_success "Group k8s-test-group present"
   else
     log_fail "Group k8s-test-group not found"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" yq -e '.csr.ttl.defaultSeconds' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
+    log_success "CSR TTL policy present"
+  else
+    log_fail "CSR TTL policy missing"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" yq -e '.bootstrap.ttl.defaultSeconds' /etc/bastion/access-policy.yaml > /dev/null 2>&1; then
+    log_success "Bootstrap TTL policy present"
+  else
+    log_fail "Bootstrap TTL policy missing"
     return 1
   fi
 }

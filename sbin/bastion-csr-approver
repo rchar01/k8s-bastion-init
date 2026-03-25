@@ -37,14 +37,14 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 
 # --------------------------------------------------
 # Defaults
 # --------------------------------------------------
 
-POLICY="/etc/kubernetes/access-policy.yaml"
-GROUP_PREFIX=""
+POLICY="${POLICY_FILE}"
 
 usage() {
   cat << EOF
@@ -246,10 +246,8 @@ main() {
   need_cmd sed
 
   parse_args "$@"
-
-  [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
-  GROUP_PREFIX="$(yq -r '.csr.groupPrefix' "$POLICY")"
-  [[ -n "$GROUP_PREFIX" && "$GROUP_PREFIX" != "null" ]] || die "csr.groupPrefix missing in policy"
+  POLICY_FILE="$POLICY"
+  policy_read
 
   local found=0
 

@@ -112,7 +112,7 @@ setup_kubernetes_mock_files() {
   log_info "Creating mock Kubernetes CA file..."
   # The bootstrap kubeconfig generation embeds the CA from the policy path.
   # In tests we don't have a real cluster PKI, but kubectl requires the file to exist.
-  podman exec "$CONTAINER_NAME" bash -c 'mkdir -p /etc/kubernetes && : > /etc/kubernetes/ca.crt'
+  podman exec "$CONTAINER_NAME" bash -c 'mkdir -p /etc/bastion && : > /etc/bastion/ca.crt'
 }
 
 # Main execution

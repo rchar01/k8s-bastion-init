@@ -33,15 +33,16 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 
-ADMIN_KUBECONFIG="/etc/kubernetes/admin.kubeconfig"
+ADMIN_KUBECONFIG="${ADMIN_KUBECONFIG_FILE}"
 ISSUER_SERVICE_NAME="bastion-token-issuer"
 ISSUER_SERVICE_PORT_NAME="http"
 
 TARGET_USER=""
 REASON="manual-recovery"
-TTL_SECONDS="${BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS}"
+TTL_SECONDS=""
 OUTPUT_JSON=0
 
 usage() {
@@ -54,7 +55,7 @@ Issue short-lived bootstrap kubeconfig via in-cluster issuer API.
 Options:
   --user USER               linux username
   --reason REASON           initial-enrollment | login-recovery | manual-recovery
-  --ttl-seconds N           bootstrap TTL seconds (default: ${BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS}, max: ${BOOTSTRAP_TOKEN_TTL_MAX_SECONDS})
+  --ttl-seconds N           bootstrap TTL seconds (default/max loaded from policy)
   --json                    print JSON response
   --admin-kubeconfig FILE   admin kubeconfig path (default: ${ADMIN_KUBECONFIG})
 EOF
@@ -127,6 +128,8 @@ main() {
   need_cmd mktemp
   need_cmd getent
 
+  policy_read
+  TTL_SECONDS="$BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS"
   parse_args "$@"
   [[ -f "$ADMIN_KUBECONFIG" ]] || die "Admin kubeconfig not found: $ADMIN_KUBECONFIG"
   getent passwd "$TARGET_USER" > /dev/null 2>&1 || die "User not found: $TARGET_USER"

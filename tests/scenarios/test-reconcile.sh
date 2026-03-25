@@ -34,7 +34,7 @@ EOF
 
   log_info "Running bastion_reconcile.sh $TEST_ENV..."
 
-  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./bastion_reconcile.sh $TEST_ENV"; then
+  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./bastion_reconcile.sh $TEST_ENV --offline-bootstrap"; then
     log_success "bastion_reconcile.sh completed"
     return 0
   else

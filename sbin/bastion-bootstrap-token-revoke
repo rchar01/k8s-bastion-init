@@ -35,7 +35,7 @@ source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
 source "${LIB_DIR}/audit.sh"
 
-ADMIN_KUBECONFIG="/etc/kubernetes/admin.kubeconfig"
+ADMIN_KUBECONFIG="${ADMIN_KUBECONFIG_FILE}"
 ISSUER_SERVICE_NAME="bastion-token-issuer"
 ISSUER_SERVICE_PORT_NAME="http"
 

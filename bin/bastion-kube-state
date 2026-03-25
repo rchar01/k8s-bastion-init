@@ -32,6 +32,7 @@ LIB_DIR="$(resolve_lib_dir)"
 
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 
 KUBE_DIR="${HOME}/.kube"
 KUBECONFIG_PATH="${KUBE_DIR}/config"
@@ -65,6 +66,9 @@ main() {
   need_cmd kubectl
   need_cmd openssl
   need_cmd date
+  need_cmd yq
+
+  policy_read
 
   if [[ ! -f "$KUBECONFIG_PATH" || ! -f "$USER_CERT_PATH" || ! -f "$USER_KEY_PATH" ]]; then
     json_out "missing" "required_file_missing"

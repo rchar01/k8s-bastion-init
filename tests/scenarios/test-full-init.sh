@@ -25,7 +25,7 @@ log_fail() {
 test_full_init() {
   log_info "Running bastion_init.sh $TEST_ENV..."
 
-  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./bastion_init.sh $TEST_ENV"; then
+  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./bastion_init.sh $TEST_ENV --offline-bootstrap"; then
     log_success "bastion_init.sh completed"
     return 0
   else

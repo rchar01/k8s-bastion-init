@@ -90,7 +90,7 @@ After tests complete, you can inspect the container:
 ```bash
 podman exec -it bastion-test bash
 # Inside container:
-cat /etc/kubernetes/access-policy.yaml
+cat /etc/bastion/access-policy.yaml
 id alice
 ls -la /home/alice/.kube/
 ```
@@ -179,7 +179,7 @@ Run verification scripts from the host shell (not inside the container):
 - ✅ Admin scripts in `/usr/local/sbin` are mode `0750`
 - ✅ Regular users cannot run admin scripts without `sudo`
 - ✅ `sudo` can execute admin scripts from `/usr/local/sbin`
-- ✅ CSR timer services use `/etc/kubernetes/admin.kubeconfig`
+- ✅ CSR timer services use `/etc/bastion/admin.kubeconfig`
 
 ## Test Users
 
@@ -243,6 +243,7 @@ chmod +x tests/**/*.sh
 ## Notes
 
 - **No Kubernetes cluster**: These tests validate the bastion setup without requiring a real K8s cluster. CSR approval will fail (expected), but everything up to CSR creation is tested.
+- **Offline bootstrap mode**: test scenarios run bootstrap with `--offline-bootstrap`, so synthetic `~/.kube/bootstrap` files are generated without issuer/API calls.
 - **Privileged containers**: Required for containerd installation and systemd operation
 - **Cleanup**: All containers and volumes are removed after tests (`--no-cleanup` preserves them only on success)
 - **Idempotent**: Tests clean up previous state before running

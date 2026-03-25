@@ -31,7 +31,7 @@ test_disable_requires_policy_removal() {
 test_disable_user() {
   log_info "Removing alice from installed bastion policy..."
 
-  podman exec "$CONTAINER_NAME" yq -i 'del(.users.alice)' /etc/kubernetes/access-policy.yaml
+  podman exec "$CONTAINER_NAME" yq -i 'del(.users.alice)' /etc/bastion/access-policy.yaml
 
   log_info "Disabling alice on bastion..."
   if ! podman exec "$CONTAINER_NAME" /usr/local/sbin/bastion-disable-user --user alice; then

@@ -44,8 +44,7 @@ Make sure these inputs are ready:
 
 Recommended CA file location on bastion hosts:
 
-- Use `/etc/kubernetes/ca.crt` as the default `cluster.caFile` path
-- Avoid `/etc/kubernetes/pki/ca.crt` on bastion hosts running `--init`, because node cleanup can remove `/etc/kubernetes/pki`
+- Use `/etc/bastion/ca.crt` as the default `cluster.caFile` path
 
 ### Required Operator Scheduling
 
@@ -120,7 +119,7 @@ Example split:
 cluster:
   name: production-cluster
   server: https://prod-k8s-api.internal:6443
-  caFile: /etc/kubernetes/ca.crt
+  caFile: /etc/bastion/ca.crt
 
 groups:
   k8s-production-admins:
@@ -170,6 +169,15 @@ cd ../k8s-bastion-init
 sudo ./bastion_reconcile.sh prod
 ```
 
+Offline test mode (for container/lab environments without a running Kubernetes API):
+
+```bash
+sudo ./bastion_init.sh test --offline-bootstrap
+sudo ./bastion_reconcile.sh test --offline-bootstrap
+```
+
+This mode only affects bootstrap kubeconfig generation. It creates synthetic `~/.kube/bootstrap` files and skips issuer/API calls.
+
 `bastion_reconcile.sh` runs these steps in order:
 
 1. `bastion-bootstrap-machine --reconcile --source .`
@@ -196,13 +204,23 @@ Example non-production policy (for local testing only):
 apiVersion: bastion.access/v1
 csr:
   signerName: platform.example.io/client
-  expirationSeconds: 28800
+  ttl:
+    defaultSeconds: 28800
+    minSeconds: 3600
+    maxSeconds: 86400
+  renewal:
+    thresholdSeconds: 7200
   groupPrefix: "k8s-"
+
+bootstrap:
+  ttl:
+    defaultSeconds: 900
+    maxSeconds: 1800
 
 cluster:
   name: test-cluster
   server: https://test-api-server:6443
-  caFile: /etc/kubernetes/ca.crt
+  caFile: /etc/bastion/ca.crt
 
 groups:
   k8s-group1:
@@ -246,7 +264,7 @@ sudo ./sbin/bastion-bootstrap-users --reconcile --source .
 
 This updates:
 
-- `/etc/kubernetes/access-policy.yaml`
+- `/etc/bastion/access-policy.yaml`
 - Linux groups and supplementary group membership
 - bootstrap kubeconfigs
 - admin kubeconfigs for users in `k8s-admin`
@@ -299,7 +317,7 @@ Security defaults applied during machine bootstrap:
 
 During users bootstrap, the admin kubeconfig template is also installed as:
 
-- `/etc/kubernetes/admin.kubeconfig` (used by CSR approver/cleanup systemd services)
+- `/etc/bastion/admin.kubeconfig` (used by CSR approver/cleanup systemd services)
 
 ### Additional Admin Scripts
 
@@ -319,7 +337,7 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 
 CSR timer services run `kubectl` with:
 
-- `KUBECONFIG=/etc/kubernetes/admin.kubeconfig`
+- `KUBECONFIG=/etc/bastion/admin.kubeconfig`
 
 ### User Scripts
 
@@ -346,6 +364,19 @@ Auto-bootstrap and renewal behavior:
 - `download.conf` - tool version and URL configuration for `download.sh`
 - `bastion_init.sh` and `bastion_reconcile.sh` - Mode 2 wrapper entry points
 
+## Bastion Runtime Directories
+
+The bastion creates and uses these host paths:
+
+- `/etc/bastion/` - bastion-owned host configuration (`access-policy.yaml`, `admin.kubeconfig`, CA file path if you keep CA there)
+- `/run/bastion-cluster-status.json` - root-written cluster probe cache consumed by login banner
+- `/var/lib/bastion/bootstrap-tokens/` - root-owned local bootstrap token metadata
+- `/var/log/bastion-audit.log` - bastion audit events
+- `/etc/profile.d/bastion-login.sh` - generated login profile shown for interactive SSH sessions
+- `~/.kube/bootstrap` - temporary bootstrap kubeconfig used only for enrollment/recovery
+- `~/.kube/user.crt`, `~/.kube/user.key`, `~/.kube/config` - active user certificate and kubeconfig
+- `~/.cache/bastion-bootstrap/` - per-user lock and state cache for bootstrap orchestration
+
 ## User Login Notice
 
 The bastion displays login information via `/etc/profile.d/bastion-login.sh`.
@@ -371,7 +402,7 @@ The cache is produced by root-owned systemd units:
 - `bastion-cluster-status.service`
 - `bastion-cluster-status.timer` (default cadence: every 30s)
 
-This avoids exposing `/etc/kubernetes/admin.kubeconfig` to regular users while keeping banner probes fast.
+This avoids exposing `/etc/bastion/admin.kubeconfig` to regular users while keeping banner probes fast.
 
 Useful commands:
 
@@ -403,7 +434,7 @@ Notice catalog:
 | `CRIT` | `No kubeconfig or bootstrap. Ask admin: sudo bastion-bootstrap-kubeconfig --user <user>` | User cannot self-recover | Admin runs `sudo bastion-bootstrap-kubeconfig --user <user>` |
 | `CRIT` | `User kubeconfig is invalid. Run: bastion-kube-renew` | Kubeconfig exists but is malformed/unreadable | Run `bastion-kube-renew` |
 | `WARN` | `No user client certificate. Run: bastion-kube-renew` | Kubeconfig has no usable client cert | Run `bastion-kube-renew` |
-| `CRIT` | `Admin probe kubeconfig missing: /etc/kubernetes/admin.kubeconfig` | Cluster health probe cannot run | Restore `/etc/kubernetes/admin.kubeconfig` |
+| `CRIT` | `Admin probe kubeconfig missing: /etc/bastion/admin.kubeconfig` | Cluster health probe cannot run | Restore `/etc/bastion/admin.kubeconfig` |
 | `CRIT` | `Cluster API is unreachable` | API `/readyz` probe failed | Check API endpoint/network/auth from bastion |
 | `WARN` | `Cluster has NotReady nodes (<ready>/<total> Ready)` | API is up but node readiness degraded | Investigate node readiness in cluster |
 | `WARN` | `User context cluster differs from admin probe cluster` | User kubeconfig cluster differs from admin probe cluster | Verify target cluster/context before changes |
@@ -428,7 +459,7 @@ Use this checklist before and immediately after the first production bootstrap.
 - verify `k8s-bastion-policy/base.yaml` and `k8s-bastion-policy/envs/<env>.yaml` contain the intended production users and groups
 - verify `cluster.server` points to the real Kubernetes API endpoint
 - verify `cluster.caFile` exists on the bastion host and matches the target cluster CA
-- prefer `/etc/kubernetes/ca.crt` for `cluster.caFile` on bastion hosts
+- prefer `/etc/bastion/ca.crt` for `cluster.caFile` on bastion hosts
 - verify `kubeconfigs/k8s-admin.kubeconfig` is the intended admin template for the target cluster
 - review `k8s-admin` membership carefully before the first init
 - run `./download.sh` or `make download`
@@ -443,7 +474,7 @@ sudo ./bastion_init.sh <env>
 
 - run `kubectl cluster-info`
 - run `bastion-kubeconfig-expiry`
-- verify `/etc/kubernetes/access-policy.yaml` matches the rendered production policy
+- verify `/etc/bastion/access-policy.yaml` matches the rendered production policy
 - verify `/etc/profile.d/bastion-login.sh` exists
 - verify at least one intended admin received the expected kubeconfig
 
@@ -608,7 +639,7 @@ WantedBy=timers.target
 ### Environment Verification
 
 - inspect `.policy-env` to confirm the last rendered environment in Mode 2
-- verify `/etc/kubernetes/access-policy.yaml` matches the intended state
+- verify `/etc/bastion/access-policy.yaml` matches the intended state
 - verify `/etc/profile.d/bastion-login.sh` exists and has been regenerated when needed
 
 ## Maintenance Cadence

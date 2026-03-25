@@ -83,28 +83,28 @@ check_sudo_resolution() {
 check_service_kubeconfig() {
   log_info "Checking service kubeconfig wiring..."
 
-  if podman exec "$CONTAINER_NAME" test -f /etc/kubernetes/admin.kubeconfig; then
-    log_success "Service kubeconfig exists at /etc/kubernetes/admin.kubeconfig"
+  if podman exec "$CONTAINER_NAME" test -f /etc/bastion/admin.kubeconfig; then
+    log_success "Service kubeconfig exists at /etc/bastion/admin.kubeconfig"
   else
-    log_fail "Missing /etc/kubernetes/admin.kubeconfig"
+    log_fail "Missing /etc/bastion/admin.kubeconfig"
     return 1
   fi
 
-  if podman exec "$CONTAINER_NAME" bash -c '[[ "$(stat -c "%a %U %G" /etc/kubernetes/admin.kubeconfig)" == "600 root root" ]]'; then
+  if podman exec "$CONTAINER_NAME" bash -c '[[ "$(stat -c "%a %U %G" /etc/bastion/admin.kubeconfig)" == "600 root root" ]]'; then
     log_success "Service kubeconfig permissions are 0600 root:root"
   else
     log_fail "Service kubeconfig permissions are incorrect"
     return 1
   fi
 
-  if podman exec "$CONTAINER_NAME" grep -q '^Environment=KUBECONFIG=/etc/kubernetes/admin.kubeconfig$' /etc/systemd/system/bastion-csr-approver.service; then
+  if podman exec "$CONTAINER_NAME" grep -q '^Environment=KUBECONFIG=/etc/bastion/admin.kubeconfig$' /etc/systemd/system/bastion-csr-approver.service; then
     log_success "Approver service uses service kubeconfig"
   else
     log_fail "Approver service missing KUBECONFIG environment"
     return 1
   fi
 
-  if podman exec "$CONTAINER_NAME" grep -q '^Environment=KUBECONFIG=/etc/kubernetes/admin.kubeconfig$' /etc/systemd/system/bastion-csr-cleanup.service; then
+  if podman exec "$CONTAINER_NAME" grep -q '^Environment=KUBECONFIG=/etc/bastion/admin.kubeconfig$' /etc/systemd/system/bastion-csr-cleanup.service; then
     log_success "Cleanup service uses service kubeconfig"
   else
     log_fail "Cleanup service missing KUBECONFIG environment"

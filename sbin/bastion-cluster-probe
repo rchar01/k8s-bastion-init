@@ -33,7 +33,7 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 
-ADMIN_KUBECONFIG="/etc/kubernetes/admin.kubeconfig"
+ADMIN_KUBECONFIG="/etc/bastion/admin.kubeconfig"
 OUTPUT_FILE="/run/bastion-cluster-status.json"
 API_TIMEOUT_SECONDS="3"
 
@@ -45,7 +45,7 @@ Usage:
 Writes compact cluster status JSON for login banner consumption.
 
 Defaults:
-  --kubeconfig /etc/kubernetes/admin.kubeconfig
+  --kubeconfig /etc/bastion/admin.kubeconfig
   --output /run/bastion-cluster-status.json
   --timeout-sec 3
 EOF

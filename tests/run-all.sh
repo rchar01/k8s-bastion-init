@@ -76,9 +76,9 @@ test_phase() {
     /usr/lib/bastion/.machine-init-done \
     /usr/lib/bastion/.users-init-done \
     2> /dev/null || true
-  podman exec "$CONTAINER_NAME" rm -rf /etc/kubernetes /home/*/.kube 2> /dev/null || true
+  podman exec "$CONTAINER_NAME" rm -rf /etc/bastion /home/*/.kube 2> /dev/null || true
   # Recreate the mock CA file expected by policy fixtures.
-  podman exec "$CONTAINER_NAME" bash -c 'mkdir -p /etc/kubernetes && : > /etc/kubernetes/ca.crt' 2> /dev/null || true
+  podman exec "$CONTAINER_NAME" bash -c 'mkdir -p /etc/bastion && : > /etc/bastion/ca.crt' 2> /dev/null || true
 
   # Test 2: Full init
   run_test "Full Init Test" "$SCRIPT_DIR/scenarios/test-full-init.sh"

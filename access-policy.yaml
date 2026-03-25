@@ -1,13 +1,37 @@
 apiVersion: bastion.access/v1
 csr:
   signerName: platform.example.io/client
-  expirationSeconds: 28800
+  ttl:
+    defaultSeconds: 28800
+    minSeconds: 3600
+    maxSeconds: 86400
+  renewal:
+    thresholdSeconds: 7200
   groupPrefix: "k8s-"
-# Public base policy for merge mode.
-# Keep this file free of environment-specific users/groups.
+bootstrap:
+  ttl:
+    defaultSeconds: 900
+    maxSeconds: 1800
+# Test cluster configuration (mock values)
 cluster:
-  name: placeholder-cluster
-  server: https://placeholder-api-server:6443
-  caFile: /etc/kubernetes/ca.crt
-groups: {}
-users: {}
+  name: test-cluster
+  server: https://test-api-server:6443
+  caFile: /etc/bastion/ca.crt
+# Test groups
+groups:
+  k8s-test-group:
+    namespaces:
+      - test-namespace
+      - default
+# Test environment - defines test users
+users:
+  alice:
+    ensureGroups:
+      - k8s-test-group
+  bob:
+    ensureGroups:
+      - k8s-test-group
+  # Added during reconcile test
+  charlie:
+    ensureGroups:
+      - k8s-test-group

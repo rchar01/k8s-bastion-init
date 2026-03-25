@@ -75,7 +75,7 @@ test_users_component() {
     return 1
   fi
 
-  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./sbin/bastion-bootstrap-users --init --source /bastion"; then
+  if podman exec "$CONTAINER_NAME" bash -c "cd /bastion && ./sbin/bastion-bootstrap-users --init --source /bastion --offline-bootstrap"; then
     log_success "Users bootstrap completed"
 
     # Verify groups were created

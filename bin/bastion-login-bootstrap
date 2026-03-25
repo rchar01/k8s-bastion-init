@@ -33,6 +33,7 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 source "${LIB_DIR}/state.sh"
 
@@ -125,6 +126,8 @@ main() {
   need_cmd flock
   need_cmd bastion-kube-state
   need_cmd bastion-enroll-cert
+
+  policy_read
 
   if ! bastion_lock_acquire 10; then
     audit_event "login_bootstrap" "skip" "reason=lock_busy"

@@ -41,7 +41,7 @@ source "${LIB_DIR}/common.sh"
 # Defaults
 # --------------------------------------------------
 
-POLICY="/etc/kubernetes/access-policy.yaml"
+POLICY="/etc/bastion/access-policy.yaml"
 
 usage() {
   cat << EOF

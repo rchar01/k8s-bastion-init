@@ -33,12 +33,13 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 
 ACTION=""
 TARGET_USER=""
 REASON="login-recovery"
-TTL_SECONDS="${BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS}"
+TTL_SECONDS=""
 TOKEN_ID=""
 JSON_OUTPUT=0
 BEST_EFFORT=0
@@ -100,6 +101,13 @@ parse_args() {
 prepare_bootstrap() {
   [[ -n "$TARGET_USER" ]] || die "--user required"
 
+  local requested_ttl
+  if [[ -n "$TTL_SECONDS" ]]; then
+    requested_ttl="$TTL_SECONDS"
+  else
+    requested_ttl="$BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS"
+  fi
+
   local home_dir primary_group kube_dir bootstrap_path tmp token_json token_id expires_at bootstrap_kubeconfig
   home_dir="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
   primary_group="$(id -gn "$TARGET_USER")"
@@ -109,7 +117,7 @@ prepare_bootstrap() {
   kube_dir="${home_dir}/.kube"
   bootstrap_path="${kube_dir}/bootstrap"
 
-  token_json="$(bastion-bootstrap-token-issue --user "$TARGET_USER" --reason "$REASON" --ttl-seconds "$TTL_SECONDS" --json)"
+  token_json="$(bastion-bootstrap-token-issue --user "$TARGET_USER" --reason "$REASON" --ttl-seconds "$requested_ttl" --json)"
   token_id="$(jq -r '.tokenId // empty' <<< "$token_json")"
   expires_at="$(jq -r '.expiresAt // empty' <<< "$token_json")"
   bootstrap_kubeconfig="$(jq -r '.bootstrapKubeconfig // empty' <<< "$token_json")"
@@ -169,6 +177,7 @@ main() {
   need_cmd bastion-bootstrap-token-revoke
 
   parse_args "$@"
+  policy_read
 
   case "$ACTION" in
     prepare)

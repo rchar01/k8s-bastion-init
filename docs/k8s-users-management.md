@@ -26,7 +26,7 @@ Users do not get long-lived static kubeconfig credentials.
 
 ## Core Files
 
-- `/etc/kubernetes/access-policy.yaml`: policy source on the bastion host
+- `/etc/bastion/access-policy.yaml`: policy source on the bastion host
 - `~/.kube/bootstrap`: temporary bootstrap kubeconfig used only for enrollment/recovery
 - `~/.kube/config`: active user kubeconfig (file-based cert references)
 - `~/.kube/user.crt`: user client certificate
@@ -37,7 +37,7 @@ Users do not get long-lived static kubeconfig credentials.
 Token issuance dependency:
 
 - in-cluster issuer service reachable via Kubernetes service proxy at
-  `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-token`
+  `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-token/issue`
 - bootstrap tokens are short-lived enrollment credentials and are revoked after successful renewal
 
 ## Main Commands
@@ -89,8 +89,7 @@ bastion-kube-renew
 
 `bastion-kube-renew` (wrapper for `bastion-renew-cert`):
 
-- reads policy for TTL and group prefix
-- enforces fixed signer `platform.example.io/client`
+- reads policy for signer, TTL, and group prefix
 - derives requested groups from the user's current host groups
 - submits a labeled CSR (`bastion-access=true`)
 - waits for approval and atomically rotates cert/key/kubeconfig files
@@ -106,14 +105,14 @@ Important:
 
 - renewal approval is based on current Unix group membership, not a second lookup of `users.<name>` in policy
 - users should log out and back in after group changes to trigger login checks and updated group state
-- `cluster.caFile` in policy must exist and be readable on the bastion host (recommended default: `/etc/kubernetes/ca.crt`)
+- `cluster.caFile` in policy must exist and be readable on the bastion host (recommended default: `/etc/bastion/ca.crt`)
 
 ## Approver Validation Behavior
 
 `bastion-csr-approver` currently validates:
 
 - CSR has label `bastion-access=true`
-- signer matches fixed contract signer `platform.example.io/client`
+- signer matches configured policy signer
 - CSR usages are `client auth`
 - CSR requested `expirationSeconds` is within allowed bounds (1h..24h)
 - requester must be either in bootstrap auth group `system:bootstrappers:platform-users` or match CN identity fallback

@@ -23,11 +23,14 @@ Modes:
 Options:
   --source DIR  Path to bastion project directory (e.g. /bastion). Required.
                 Must contain rendered access-policy.yaml.
+  --offline-bootstrap
+                Generate synthetic bootstrap kubeconfigs without issuer/API calls.
 EOF
 }
 
 MODE=""
 SOURCE_DIR=""
+OFFLINE_BOOTSTRAP=0
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -43,6 +46,10 @@ parse_args() {
       --source)
         SOURCE_DIR="$2"
         shift 2
+        ;;
+      --offline-bootstrap)
+        OFFLINE_BOOTSTRAP=1
+        shift
         ;;
       -h | --help)
         usage
@@ -77,8 +84,8 @@ parse_args() {
 LIB_DST="/usr/local/lib/bastion"
 BIN_DST="/usr/local/bin"
 SBIN_DST="/usr/local/sbin"
-POLICY_DST="/etc/kubernetes/access-policy.yaml"
-ADMIN_KUBECONFIG_DST="/etc/kubernetes/admin.kubeconfig"
+POLICY_DST="/etc/bastion/access-policy.yaml"
+ADMIN_KUBECONFIG_DST="/etc/bastion/admin.kubeconfig"
 INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
 MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
 USERS_INIT_MARKER="${LIB_DST}/.users-init-done"
@@ -193,7 +200,11 @@ apply_users_state() {
   bastion-bootstrap-user-groups --policy "$POLICY_DST"
 
   log_info "Bootstrapping kubeconfigs for all users"
-  bastion-bootstrap-kubeconfig --all --policy "$POLICY_DST"
+  if [[ "$OFFLINE_BOOTSTRAP" -eq 1 ]]; then
+    bastion-bootstrap-kubeconfig --all --policy "$POLICY_DST" --offline-bootstrap
+  else
+    bastion-bootstrap-kubeconfig --all --policy "$POLICY_DST"
+  fi
 
   log_info "Bootstrapping admin kubeconfigs"
   bastion-bootstrap-admin-kubeconfig \
@@ -257,6 +268,9 @@ main() {
 
   log_info "Mode: $MODE"
   log_info "Source: $SOURCE_DIR"
+  if [[ "$OFFLINE_BOOTSTRAP" -eq 1 ]]; then
+    log_warn "Offline bootstrap mode enabled (test mode, no issuer/API calls)"
+  fi
 
   install_policy
   install_service_admin_kubeconfig

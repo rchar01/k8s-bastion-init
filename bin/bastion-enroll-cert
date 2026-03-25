@@ -33,9 +33,9 @@ LIB_DIR="$(resolve_lib_dir)"
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
 source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/policy.sh"
 source "${LIB_DIR}/audit.sh"
 
-POLICY="/etc/kubernetes/access-policy.yaml"
 BOOTSTRAP_KUBECONFIG="${HOME}/.kube/bootstrap"
 KUBE_DIR="${HOME}/.kube"
 USER_CERT_PATH="${KUBE_DIR}/user.crt"
@@ -97,16 +97,13 @@ main() {
   parse_args "$@"
 
   [[ -f "$BOOTSTRAP_KUBECONFIG" ]] || die "Missing bootstrap kubeconfig: $BOOTSTRAP_KUBECONFIG"
-  [[ -f "$POLICY" ]] || die "Policy file not found: $POLICY"
+  policy_read
 
   local user_name prefix ttl signer
   user_name="$(id -un)"
-  prefix="$(yq -r '.csr.groupPrefix' "$POLICY")"
-  ttl="$(yq -r '.csr.expirationSeconds' "$POLICY")"
+  prefix="$GROUP_PREFIX"
+  ttl="$CLIENT_CERT_TTL_DEFAULT_SECONDS"
   signer="$CSR_SIGNER_NAME"
-
-  [[ "$ttl" =~ ^[0-9]+$ ]] || die "csr.expirationSeconds must be integer"
-  ((ttl >= CLIENT_CERT_TTL_MIN_SECONDS && ttl <= CLIENT_CERT_TTL_MAX_SECONDS)) || die "csr.expirationSeconds out of allowed range"
 
   mapfile -t groups < <(id -nG | tr ' ' '\n' | grep "^${prefix}" || true)
   [[ "${#groups[@]}" -gt 0 ]] || die "No ${prefix}* groups found for user"
@@ -178,9 +175,9 @@ EOF
   cfg_tmp="${tmp}/config"
 
   local cluster server ca
-  cluster="$(yq -r '.cluster.name' "$POLICY")"
-  server="$(yq -r '.cluster.server' "$POLICY")"
-  ca="$(yq -r '.cluster.caFile' "$POLICY")"
+  cluster="$BASTION_CLUSTER_NAME"
+  server="$BASTION_CLUSTER_SERVER"
+  ca="$BASTION_CLUSTER_CA_FILE"
 
   write_kubeconfig_file_refs "$cluster" "$server" "$ca" "$user_name" "$cfg_tmp"
 

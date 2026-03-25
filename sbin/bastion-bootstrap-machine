@@ -159,7 +159,7 @@ cleanup_node_if_needed() {
     /var/lib/containerd \
     /run/containerd
 
-  # Remove common node config (keep /etc/kubernetes itself, we manage policy there)
+  # Remove common node config; bastion policy is managed under /etc/bastion
   rm -rf /etc/kubernetes/pki /etc/kubernetes/manifests > /dev/null 2>&1 || true
   rm -f \
     /etc/kubernetes/admin.conf \
