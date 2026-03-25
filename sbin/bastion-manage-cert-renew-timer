@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-manage-cert-renew-timer"
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+
+SYSTEMD_DIR="/etc/systemd/system"
+SERVICE_NAME="bastion-cert-renew.service"
+TIMER_NAME="bastion-cert-renew.timer"
+
+ON_BOOT_SEC="10min"
+ON_ACTIVE_SEC="30min"
+RANDOMIZED_DELAY_SEC="5min"
+
+ACTION=""
+
+usage() {
+  cat << EOF
+Usage:
+  bastion-manage-cert-renew-timer --install [options]
+  bastion-manage-cert-renew-timer --remove
+
+Options:
+  --install
+  --remove
+  --on-boot-sec DUR
+  --on-active-sec DUR
+  --jitter-sec DUR
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --install)
+        ACTION="install"
+        shift
+        ;;
+      --remove)
+        ACTION="remove"
+        shift
+        ;;
+      --on-boot-sec)
+        ON_BOOT_SEC="$2"
+        shift 2
+        ;;
+      --on-active-sec)
+        ON_ACTIVE_SEC="$2"
+        shift 2
+        ;;
+      --jitter-sec)
+        RANDOMIZED_DELAY_SEC="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+  [[ -n "$ACTION" ]] || die "Specify --install or --remove"
+}
+
+write_service() {
+  local dst="$1"
+  cat > "$dst" << EOF
+[Unit]
+Description=Renew bastion Kubernetes client certificates
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bastion-cert-renew-all
+EOF
+}
+
+write_timer() {
+  local dst="$1"
+  cat > "$dst" << EOF
+[Unit]
+Description=Run bastion certificate renewal periodically
+
+[Timer]
+OnBootSec=${ON_BOOT_SEC}
+OnUnitActiveSec=${ON_ACTIVE_SEC}
+RandomizedDelaySec=${RANDOMIZED_DELAY_SEC}
+Persistent=true
+Unit=${SERVICE_NAME}
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+install_if_changed() {
+  local src="$1"
+  local dst="$2"
+  if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
+    log_info "Unit unchanged: $dst"
+    return 1
+  fi
+  install -m 0644 "$src" "$dst"
+  log_info "Installed unit: $dst"
+  return 0
+}
+
+install_units() {
+  local tmp
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "${tmp:-}"' EXIT
+
+  write_service "$tmp/$SERVICE_NAME"
+  write_timer "$tmp/$TIMER_NAME"
+
+  install_if_changed "$tmp/$SERVICE_NAME" "$SYSTEMD_DIR/$SERVICE_NAME" || true
+  install_if_changed "$tmp/$TIMER_NAME" "$SYSTEMD_DIR/$TIMER_NAME" || true
+
+  systemctl daemon-reload
+  systemctl enable --now "$TIMER_NAME"
+  log_info "Cert renew timer installed"
+}
+
+remove_units() {
+  systemctl disable --now "$TIMER_NAME" > /dev/null 2>&1 || true
+  rm -f "$SYSTEMD_DIR/$SERVICE_NAME" "$SYSTEMD_DIR/$TIMER_NAME"
+  systemctl daemon-reload
+  log_info "Cert renew timer removed"
+}
+
+main() {
+  require_root
+  need_cmd systemctl
+  need_cmd install
+  need_cmd cmp
+  need_cmd mktemp
+
+  parse_args "$@"
+
+  case "$ACTION" in
+    install)
+      install_units
+      ;;
+    remove)
+      remove_units
+      ;;
+  esac
+}
+
+main "$@"

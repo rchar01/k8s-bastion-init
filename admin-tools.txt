@@ -12,8 +12,10 @@ bastion-disable-user
 bastion-csr-approver
 bastion-csr-cleanup
 bastion-manage-csr-timers
+bastion-manage-cert-renew-timer
 bastion-cluster-probe
 bastion-manage-cluster-status-timer
+bastion-cert-renew-all
 bastion-install-containerd
 bastion-install-tools
 bastion-login-profile

@@ -53,13 +53,13 @@ Also make sure:
 
 - `kubeconfigs/k8s-admin.kubeconfig` contains a real admin kubeconfig template for the target cluster
 - `cluster.caFile` in your policy points to a readable CA certificate on the bastion host
-- Bootstrap will install and enable systemd timers for `bastion-csr-approver` and `bastion-csr-cleanup` by default
+- Bootstrap will install and enable systemd timers for `bastion-csr-approver`, `bastion-csr-cleanup`, and `bastion-cert-renew` by default
 
 ## Overview
 
 This project provides scripts and tooling to:
 - Transform a clean Linux VM or repurpose a former Kubernetes node into a bastion host
-- Manage Kubernetes access via short-lived client certificates (default: 7 days)
+- Manage Kubernetes access via short-lived client certificates (policy-driven, bounded to 1h..24h)
 - Automate user/group management based on Linux system groups
 - Provide self-service certificate renewal for users
 - Install and manage common Kubernetes client tools
@@ -166,12 +166,14 @@ The access policy defines:
 - Kubernetes-oriented Linux groups
 - User-to-group mappings via `ensureGroups`
 
+Contract note: bastion CSR scripts enforce signer `platform.example.io/client` as a fixed integration constant.
+
 Minimal example:
 
 ```yaml
 csr:
-  signerName: kubernetes.io/kube-apiserver-client
-  expirationSeconds: 604800
+  signerName: platform.example.io/client
+  expirationSeconds: 28800
   groupPrefix: "k8s-"
 
 cluster:
@@ -236,11 +238,14 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `./bastion_reconcile.sh <env>` - production reconcile wrapper for Mode 2
 - `sudo bastion-disable-user --user <user>` - disable bastion-managed Kubernetes access for a target user
 - `sudo bastion-manage-csr-timers --remove` - remove default CSR approver/cleanup systemd timers
+- `sudo bastion-manage-cert-renew-timer --install` - install transparent renewal timer
 - `sudo bastion-manage-cluster-status-timer --install` - install timer that refreshes login-banner cluster status cache
 - `sudo bastion-cluster-probe` - run one-shot cluster status cache refresh
-- `sudo bastion-bootstrap-token-issue --user <user> --json` - issue short-lived bootstrap token via in-cluster issuer
-- `sudo bastion-bootstrap-token-revoke --user <user>` - revoke bootstrap token via in-cluster issuer
-- `bastion-kube-renew` - user self-service certificate renewal
+- `sudo bastion-bootstrap-token-issue --user <user> --reason initial-enrollment --json` - issue short-lived bootstrap kubeconfig via in-cluster issuer
+- `sudo bastion-bootstrap-token-revoke --token-id <id>` - revoke bootstrap token via in-cluster issuer
+- `bastion-login-bootstrap --quiet` - login-triggered best-effort auto-bootstrap
+- `bastion-renew-cert --quiet` - non-interactive renewal engine
+- `bastion-kube-renew` - manual renewal wrapper
 - `make help` - list convenience targets for local workflows and tests
 
 For the full script reference, see `docs/bastion-bootstrap.md` and `docs/k8s-users-management.md`.
@@ -252,8 +257,8 @@ tool updates, and periodic maintenance, see `docs/bastion-bootstrap.md`.
 
 ## Certificate Lifecycle
 
-User access is based on short-lived certificates renewed with
-`bastion-kube-renew`. For the detailed renewal, approval, and cleanup flow,
+User access is based on short-lived certificates with login-triggered bootstrap
+recovery and timer-driven transparent renewal. For the detailed flow,
 see `docs/k8s-users-management.md`.
 
 ## Testing

@@ -141,7 +141,7 @@ approve_csr() {
 validate_csr() {
   local csr="$1"
 
-  local user req subj cn groups host_groups valid=true signer usages requester_groups expiration
+  local user requester req subj cn groups host_groups valid=true signer usages requester_groups expiration
 
   signer="$(csr_signer "$csr")"
   usages="$(csr_usages "$csr")"
@@ -170,14 +170,8 @@ validate_csr() {
     return 1
   fi
 
+  requester="$(csr_username "$csr")"
   requester_groups="$(csr_request_groups "$csr")"
-  if ! grep -qw "$BOOTSTRAP_AUTH_GROUP" <<< "$requester_groups"; then
-    log_warn "DENY $csr - requester not in bootstrap auth group"
-    audit_event "csr_approve" "deny" "csr=${csr} reason=missing_bootstrap_group requester_groups=${requester_groups}"
-    return 1
-  fi
-
-  user="$(csr_username "$csr")"
 
   req="$(csr_request "$csr")"
   subj="$(csr_subject "$req")"
@@ -186,6 +180,14 @@ validate_csr() {
   groups="$(echo "$subj" | subject_groups || true)"
 
   user="$cn"
+
+  if ! grep -qw "$BOOTSTRAP_AUTH_GROUP" <<< "$requester_groups"; then
+    if [[ "$requester" != "$cn" ]]; then
+      log_warn "DENY $csr - requester identity mismatch"
+      audit_event "csr_approve" "deny" "csr=${csr} reason=requester_mismatch requester=${requester} cn=${cn}"
+      return 1
+    fi
+  fi
 
   if ! user_exists "$user"; then
     log_warn "DENY $csr — CN user does not exist: $user"

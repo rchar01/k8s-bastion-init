@@ -395,6 +395,11 @@ case \$- in *i*)
     export BASTION_NOTICE_SHOWN=1
     BASTION_NOTICES=()
 
+    if [[ -z "\${BASTION_BOOTSTRAP_DONE:-}" ]] && command -v bastion-login-bootstrap >/dev/null 2>&1; then
+      export BASTION_BOOTSTRAP_DONE=1
+      bastion-login-bootstrap --quiet >/dev/null 2>&1 || true
+    fi
+
     _bastion_collect_user_status
     _bastion_collect_cluster_status
 

@@ -51,7 +51,7 @@ check_tools() {
 check_scripts() {
   log_info "Checking bastion scripts..."
 
-  local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy" "bastion-disable-user" "bastion-manage-csr-timers" "bastion-cluster-probe" "bastion-manage-cluster-status-timer" "bastion-bootstrap-token-issue" "bastion-bootstrap-token-revoke")
+  local scripts=("bastion-bootstrap-machine" "bastion-bootstrap-users" "bastion-render-policy" "bastion-disable-user" "bastion-manage-csr-timers" "bastion-manage-cert-renew-timer" "bastion-cert-renew-all" "bastion-cluster-probe" "bastion-manage-cluster-status-timer" "bastion-bootstrap-token-issue" "bastion-bootstrap-token-revoke")
   local all_present=true
 
   for script in "${scripts[@]}"; do
@@ -70,7 +70,7 @@ check_scripts() {
 check_csr_timers() {
   log_info "Checking CSR systemd timers..."
 
-  local timers=("bastion-csr-approver.timer" "bastion-csr-cleanup.timer" "bastion-cluster-status.timer")
+  local timers=("bastion-csr-approver.timer" "bastion-csr-cleanup.timer" "bastion-cluster-status.timer" "bastion-cert-renew.timer")
   local all_ok=true
 
   for timer in "${timers[@]}"; do

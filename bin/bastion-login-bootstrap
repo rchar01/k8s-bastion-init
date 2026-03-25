@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-login-bootstrap"
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/audit.sh"
+source "${LIB_DIR}/state.sh"
+
+ROOT_HELPER="/usr/libexec/bastion-bootstrap-helper"
+QUIET=0
+FAILURE_BACKOFF_SECONDS=60
+
+usage() {
+  cat << EOF
+Usage:
+  bastion-login-bootstrap [--quiet]
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --quiet)
+        QUIET=1
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+}
+
+run_helper() {
+  if [[ "$EUID" -eq 0 ]]; then
+    "$ROOT_HELPER" "$@"
+    return
+  fi
+
+  if command -v pkexec > /dev/null 2>&1; then
+    pkexec "$ROOT_HELPER" "$@"
+    return
+  fi
+
+  "$ROOT_HELPER" "$@"
+}
+
+update_state() {
+  local status="$1"
+  local error_message="$2"
+  local csr_name="$3"
+  local token_id="$4"
+  local cert_not_after="$5"
+  local now_iso state_json
+
+  now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  state_json="$(bastion_state_read_json)"
+
+  local updated
+  updated="$(jq -n \
+    --argjson base "$state_json" \
+    --arg user "$(id -un)" \
+    --arg now "$now_iso" \
+    --arg status "$status" \
+    --arg err "$error_message" \
+    --arg csr "$csr_name" \
+    --arg token "$token_id" \
+    --arg certNotAfter "$cert_not_after" \
+    '$base + {
+      version: 1,
+      user: $user,
+      lastLoginCheckAt: $now,
+      certStatus: $status,
+      lastError: $err,
+      lastCsrName: (if $csr == "" then ($base.lastCsrName // "") else $csr end),
+      lastTokenId: (if $token == "" then ($base.lastTokenId // "") else $token end),
+      certNotAfter: (if $certNotAfter == "" then ($base.certNotAfter // "") else $certNotAfter end),
+      lastBootstrapAt: (if $status == "enrolled" then $now else ($base.lastBootstrapAt // "") end),
+      lastBootstrapAttemptAt: $now,
+      lastBootstrapFailureAt: (if $status == "failed" then $now else ($base.lastBootstrapFailureAt // "") end)
+    }')"
+
+  bastion_state_write_json "$updated"
+}
+
+main() {
+  parse_args "$@"
+
+  need_cmd jq
+  need_cmd install
+  need_cmd flock
+  need_cmd bastion-kube-state
+  need_cmd bastion-enroll-cert
+
+  if ! bastion_lock_acquire 10; then
+    audit_event "login_bootstrap" "skip" "reason=lock_busy"
+    exit 0
+  fi
+  trap 'bastion_lock_release' EXIT
+
+  local state_json state reason now_epoch last_fail fail_epoch token_json token_id cert_not_after
+  state_json="$(bastion-kube-state)"
+  state="$(jq -r '.status' <<< "$state_json")"
+  reason="$(jq -r '.reason' <<< "$state_json")"
+  cert_not_after="$(jq -r '.certNotAfter // ""' <<< "$state_json")"
+
+  audit_event "login_bootstrap" "check" "state=${state} reason=${reason}"
+
+  case "$state" in
+    valid | renewable)
+      update_state "$state" "" "" "" "$cert_not_after"
+      audit_event "login_bootstrap" "skip" "state=${state}"
+      [[ "$QUIET" -eq 1 ]] || printf '%s\n' "Kubernetes access ready."
+      exit 0
+      ;;
+    missing | expired | broken) ;;
+    *)
+      update_state "failed" "unknown_state:${state}" "" "" "$cert_not_after"
+      audit_event "login_bootstrap" "error" "unknown_state=${state}"
+      exit 0
+      ;;
+  esac
+
+  now_epoch="$(date +%s)"
+  last_fail="$(jq -r '.lastBootstrapFailureAt // ""' <<< "$(bastion_state_read_json)")"
+  if [[ -n "$last_fail" ]]; then
+    fail_epoch="$(date -d "$last_fail" +%s 2> /dev/null || true)"
+    if [[ -n "$fail_epoch" ]] && ((now_epoch - fail_epoch < FAILURE_BACKOFF_SECONDS)); then
+      audit_event "login_bootstrap" "skip" "reason=backoff"
+      exit 0
+    fi
+  fi
+
+  audit_event "login_bootstrap" "start" "reason=login-recovery"
+  if ! token_json="$(run_helper prepare --user "$(id -un)" --reason login-recovery --ttl-seconds "$BOOTSTRAP_TOKEN_TTL_DEFAULT_SECONDS" --json 2> /tmp/bastion-login-bootstrap.err)"; then
+    update_state "failed" "helper_prepare_failed" "" "" "$cert_not_after"
+    audit_event "login_bootstrap" "error" "step=helper_prepare"
+    [[ "$QUIET" -eq 1 ]] || printf '%s\n' "Kubernetes certificate bootstrap failed; see bastion logs."
+    exit 0
+  fi
+
+  token_id="$(jq -r '.tokenId // empty' <<< "$token_json")"
+
+  if ! bastion-enroll-cert --reason login-recovery > /tmp/bastion-login-enroll.out 2> /tmp/bastion-login-enroll.err; then
+    update_state "failed" "enroll_failed" "" "$token_id" "$cert_not_after"
+    audit_event "login_bootstrap" "error" "step=enroll"
+    [[ -n "$token_id" ]] && run_helper revoke --token-id "$token_id" --best-effort > /dev/null 2>&1 || true
+    [[ "$QUIET" -eq 1 ]] || printf '%s\n' "Kubernetes certificate bootstrap failed; see bastion logs."
+    exit 0
+  fi
+
+  [[ -n "$token_id" ]] && run_helper revoke --token-id "$token_id" --best-effort > /dev/null 2>&1 || true
+
+  state_json="$(bastion-kube-state)"
+  cert_not_after="$(jq -r '.certNotAfter // ""' <<< "$state_json")"
+  update_state "enrolled" "" "" "$token_id" "$cert_not_after"
+  audit_event "login_bootstrap" "ok" "token_id=${token_id}"
+
+  [[ "$QUIET" -eq 1 ]] || printf '%s\n' "Kubernetes certificate enrolled successfully."
+}
+
+main "$@"

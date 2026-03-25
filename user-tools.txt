@@ -15,5 +15,9 @@ nerdctl
 etcdctl
 etcdutl
 bastion-kube-renew
+bastion-renew-cert
+bastion-kube-state
+bastion-login-bootstrap
+bastion-enroll-cert
 bastion-kubeconfig-expiry
 bastion-version

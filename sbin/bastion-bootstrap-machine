@@ -79,6 +79,7 @@ parse_args() {
 LIB_DST="/usr/local/lib/bastion"
 BIN_DST="/usr/local/bin"
 SBIN_DST="/usr/local/sbin"
+LIBEXEC_DST="/usr/libexec"
 INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
 MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
 SUDOERS_PATH_FILE="/etc/sudoers.d/bastion-path"
@@ -223,6 +224,7 @@ validate_source_layout() {
   [[ -d "$SOURCE_DIR/lib" ]] || die "Invalid source dir (missing lib): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/bin" ]] || die "Invalid source dir (missing bin): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/sbin" ]] || die "Invalid source dir (missing sbin): $SOURCE_DIR"
+  [[ -d "$SOURCE_DIR/libexec" ]] || die "Invalid source dir (missing libexec): $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/VERSION" ]] || die "Missing VERSION file in $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/download.conf" ]] || die "Missing download.conf in $SOURCE_DIR"
   # NOTE: We do NOT require access-policy.yaml here - that's for users bootstrap
@@ -240,6 +242,10 @@ install_runtime() {
   log_info "Installing admin commands to $SBIN_DST"
   install -d "$SBIN_DST"
   install_tree_dir "$SOURCE_DIR/sbin" "$SBIN_DST" "0750" "*"
+
+  log_info "Installing privileged helpers to $LIBEXEC_DST"
+  install -d "$LIBEXEC_DST"
+  install_tree_dir "$SOURCE_DIR/libexec" "$LIBEXEC_DST" "0755" "*"
 
   # Record installed version
   local src_ver

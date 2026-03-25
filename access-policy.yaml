@@ -1,7 +1,7 @@
 apiVersion: bastion.access/v1
 csr:
-  signerName: kubernetes.io/kube-apiserver-client
-  expirationSeconds: 604800
+  signerName: platform.example.io/client
+  expirationSeconds: 28800
   groupPrefix: "k8s-"
 # Public base policy for merge mode.
 # Keep this file free of environment-specific users/groups.

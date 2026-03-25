@@ -10,31 +10,34 @@ For the canonical Kubernetes RBAC/bootstrap contract, see `docs/bastion-bootstra
 Access is based on:
 
 - Linux groups on the bastion host (typically `k8s-*` groups)
-- Short-lived client certificates (default 7 days)
+- Short-lived client certificates (policy-driven, bounded to 1h..24h)
 - Kubernetes RBAC bindings to certificate groups (`O=` fields)
 
 Users do not get long-lived static kubeconfig credentials.
 
 ## Access Flow
 
-1. Admin issues a short-lived bootstrap token via in-cluster token issuer.
-2. Admin bootstraps a user kubeconfig (`~/.kube/bootstrap`) embedding that token.
-3. User runs `bastion-kube-renew`.
-4. User CSR is submitted to Kubernetes with signer `platform.example.io/client`.
-5. `bastion-csr-approver` runs via systemd timer and approves valid CSRs.
-6. User receives a signed certificate and `~/.kube/config` is rebuilt.
-7. Bootstrap token is revoked/cleaned after successful renewal.
+1. User starts an interactive bastion login session.
+2. `bastion-login-bootstrap` checks local credential state (`missing|valid|renewable|expired|broken`).
+3. For `missing|expired|broken`, root helper obtains short-lived bootstrap kubeconfig from in-cluster issuer and writes `~/.kube/bootstrap`.
+4. `bastion-enroll-cert` submits CSR with signer `platform.example.io/client`, waits for signing, and atomically writes `~/.kube/user.crt`, `~/.kube/user.key`, and `~/.kube/config`.
+5. Bootstrap kubeconfig is removed and token revoke is attempted best-effort.
+6. Background renewal timer runs every 30 minutes; users in renew window are renewed automatically with current valid cert.
 
 ## Core Files
 
 - `/etc/kubernetes/access-policy.yaml`: policy source on the bastion host
-- `~/.kube/bootstrap`: limited kubeconfig used to submit CSRs
-- `~/.kube/config`: active user kubeconfig with signed cert
+- `~/.kube/bootstrap`: temporary bootstrap kubeconfig used only for enrollment/recovery
+- `~/.kube/config`: active user kubeconfig (file-based cert references)
+- `~/.kube/user.crt`: user client certificate
+- `~/.kube/user.key`: user private key
+- `~/.cache/bastion-bootstrap/state.json`: per-user bootstrap/renew state
+- `~/.cache/bastion-bootstrap/lock`: per-user enrollment/renew lock
 
 Token issuance dependency:
 
 - in-cluster issuer service reachable via Kubernetes service proxy at
-  `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-tokens`
+  `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-token`
 - bootstrap tokens are short-lived enrollment credentials and are revoked after successful renewal
 
 ## Main Commands
@@ -44,8 +47,12 @@ Token issuance dependency:
 | `sudo bastion-bootstrap-token-issue --user <user> --json` | Issue short-lived bootstrap token via issuer workload |
 | `sudo bastion-bootstrap-kubeconfig --user <user>` | Create bootstrap kubeconfig for one user (token-backed) |
 | `sudo bastion-bootstrap-kubeconfig --all` | Create bootstrap kubeconfigs for all policy users present on host |
-| `sudo bastion-bootstrap-token-revoke --user <user>` | Revoke bootstrap token via issuer workload |
+| `sudo bastion-bootstrap-token-revoke --token-id <id>` | Revoke bootstrap token via issuer workload |
+| `bastion-login-bootstrap --quiet` | Login-triggered auto-bootstrap orchestration (best-effort) |
+| `bastion-enroll-cert --reason login-recovery` | Bootstrap-based enrollment using temporary `~/.kube/bootstrap` |
 | `bastion-kube-renew` | User self-service certificate renewal |
+| `bastion-renew-cert --quiet` | Non-interactive renewal engine (used by timer) |
+| `sudo bastion-manage-cert-renew-timer --install` | Install transparent cert renewal timer |
 | `sudo bastion-csr-approver` | Validate and approve bastion CSRs |
 | `sudo bastion-csr-cleanup` | Delete old bastion CSRs |
 | `bastion-kubeconfig-expiry` | Show certificate expiry summary |
@@ -56,7 +63,7 @@ Bootstrap kubeconfig creation is policy-driven: the target user must exist in `u
 
 This guide focuses on the access lifecycle after the bastion is installed. For full host bootstrap procedures, use `docs/bastion-bootstrap.md`.
 
-Run as root:
+Run as root to pre-bootstrap specific users (optional; login auto-bootstrap can also recover on demand):
 
 ```bash
 sudo bastion-bootstrap-kubeconfig --user alice
@@ -80,19 +87,25 @@ Run as regular user (not root):
 bastion-kube-renew
 ```
 
-`bastion-kube-renew`:
+`bastion-kube-renew` (wrapper for `bastion-renew-cert`):
 
-- reads the policy for CSR settings (`signerName`, TTL, group prefix)
+- reads policy for TTL and group prefix
+- enforces fixed signer `platform.example.io/client`
 - derives requested groups from the user's current host groups
 - submits a labeled CSR (`bastion-access=true`)
-- waits for approval and rebuilds `~/.kube/config`
+- waits for approval and atomically rotates cert/key/kubeconfig files
 
-If `~/.kube/config` exists, it is backed up to `~/.kube/config.bak.<timestamp>`.
+Transparent renewal:
+
+- `bastion-cert-renew.timer` runs every 30 minutes with jitter
+- renewal occurs only when remaining cert lifetime is below 2 hours
+- renewal is fully user-context and does not call issuer
+- expired certs do not renew and are recovered through next login auto-bootstrap
 
 Important:
 
 - renewal approval is based on current Unix group membership, not a second lookup of `users.<name>` in policy
-- users should log out and back in after group changes before running `bastion-kube-renew`
+- users should log out and back in after group changes to trigger login checks and updated group state
 - `cluster.caFile` in policy must exist and be readable on the bastion host (recommended default: `/etc/kubernetes/ca.crt`)
 
 ## Approver Validation Behavior
@@ -100,9 +113,11 @@ Important:
 `bastion-csr-approver` currently validates:
 
 - CSR has label `bastion-access=true`
-- signer matches `csr.signerName` from policy
+- signer matches fixed contract signer `platform.example.io/client`
 - CSR usages are `client auth`
-- subject CN equals CSR username
+- CSR requested `expirationSeconds` is within allowed bounds (1h..24h)
+- requester must be either in bootstrap auth group `system:bootstrappers:platform-users` or match CN identity fallback
+- subject CN resolves to an existing host user
 - all requested groups use the configured group prefix
 - all requested groups are present in host group membership for that user
 
@@ -140,9 +155,9 @@ Add access:
 1. Add user to Linux host.
 2. Add or update user/group mapping in policy.
 3. Reconcile users/groups from admin workflow.
-4. Bootstrap kubeconfig (`sudo bastion-bootstrap-kubeconfig --user <user>`).
-5. User starts a new login session if group membership changed.
-6. User runs `bastion-kube-renew`.
+4. Optional pre-bootstrap: `sudo bastion-bootstrap-kubeconfig --user <user>`.
+5. User starts a new interactive login session (auto-bootstrap/enroll runs best-effort).
+6. Validate resulting `~/.kube/config` and access.
 
 Remove access:
 

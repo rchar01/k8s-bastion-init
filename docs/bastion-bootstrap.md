@@ -49,15 +49,22 @@ Recommended CA file location on bastion hosts:
 
 ### Required Operator Scheduling
 
-Bootstrap and reconcile install and enable systemd timers for CSR processing by default.
+Bootstrap and reconcile install and enable systemd timers for CSR processing and transparent renewal by default.
 
 - `bastion-csr-approver.timer`: `OnBootSec=1min`, `OnUnitActiveSec=2min`
 - `bastion-csr-cleanup.timer`: `OnBootSec=10min`, `OnUnitActiveSec=6h`
+- `bastion-cert-renew.timer`: `OnBootSec=10min`, `OnUnitActiveSec=30min`, `RandomizedDelaySec=5min`
 
-To remove these timers, run:
+To remove CSR timers, run:
 
 ```bash
 sudo bastion-manage-csr-timers --remove
+```
+
+To remove transparent renewal timer, run:
+
+```bash
+sudo bastion-manage-cert-renew-timer --remove
 ```
 
 ## Architecture And Modes
@@ -188,8 +195,8 @@ Example non-production policy (for local testing only):
 # access-policy.yaml
 apiVersion: bastion.access/v1
 csr:
-  signerName: kubernetes.io/kube-apiserver-client
-  expirationSeconds: 604800
+  signerName: platform.example.io/client
+  expirationSeconds: 28800
   groupPrefix: "k8s-"
 
 cluster:
@@ -305,6 +312,8 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories
 - **`bastion-login-profile`**: generates the login banner and tool summary
 - **`bastion-manage-csr-timers`**: installs/removes CSR approver and cleanup systemd timers
+- **`bastion-manage-cert-renew-timer`**: installs/removes transparent cert renewal timer
+- **`bastion-cert-renew-all`**: root-run dispatcher for per-user renewal checks
 - **`bastion-cluster-probe`**: writes compact cluster status cache for login banner
 - **`bastion-manage-cluster-status-timer`**: installs/removes cluster status probe timer
 
@@ -312,17 +321,22 @@ CSR timer services run `kubectl` with:
 
 - `KUBECONFIG=/etc/kubernetes/admin.kubeconfig`
 
-### User Script
+### User Scripts
 
-- **`bastion-kube-renew`**: renews a user certificate based on current Unix group membership
+- **`bastion-login-bootstrap`**: login-triggered best-effort auto-bootstrap orchestration
+- **`bastion-enroll-cert`**: bootstrap enrollment engine
+- **`bastion-renew-cert`**: non-interactive renewal engine
+- **`bastion-kube-renew`**: manual wrapper for `bastion-renew-cert`
+- **`bastion-kube-state`**: machine-readable credential state classifier
 - **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 
-Requirements:
+Auto-bootstrap and renewal behavior:
 
-- `~/.kube/bootstrap` must exist
-- the user must belong to at least one `k8s-*` group, or whatever `csr.groupPrefix` is configured to match
-- the policy must contain valid `csr.*`, `cluster.name`, `cluster.server`, and `cluster.caFile` values
-- users should start a new login session after group changes before running `bastion-kube-renew`
+- login flow is best-effort and must not block interactive shell access
+- per-user lock/state files live under `~/.cache/bastion-bootstrap/`
+- enrollment writes file-based credentials: `~/.kube/user.crt`, `~/.kube/user.key`, and `~/.kube/config`
+- renewal runs as user context and does not call issuer API
+- expired certs are recovered via login bootstrap flow, not in-band renewal
 
 ## Operator Inputs
 
@@ -446,7 +460,7 @@ Use these checks before declaring the bastion ready for general use.
 ### Regular User Verification
 
 - bootstrap a test user with `sudo bastion-bootstrap-kubeconfig --user <user>` if needed
-- SSH as that user and run `bastion-kube-renew`
+- SSH as that user (interactive shell) to allow login auto-bootstrap recovery when needed
 - verify the resulting `~/.kube/config` can reach the cluster with the expected permissions
 
 ### Deactivation Verification
@@ -465,12 +479,19 @@ To reinstall defaults manually:
 
 ```bash
 sudo bastion-manage-csr-timers --install
+sudo bastion-manage-cert-renew-timer --install
 ```
 
 To remove all CSR timer units:
 
 ```bash
 sudo bastion-manage-csr-timers --remove
+```
+
+To remove transparent renewal timer units:
+
+```bash
+sudo bastion-manage-cert-renew-timer --remove
 ```
 
 Use custom schedules only when you need non-default cadence.
@@ -561,7 +582,7 @@ WantedBy=timers.target
 - add the user and `ensureGroups` mapping in policy
 - reconcile the bastion
 - run `sudo bastion-bootstrap-kubeconfig --user <user>`
-- ask the user to start a new login session and run `bastion-kube-renew`
+- ask the user to start a new interactive login session (auto-bootstrap may enroll automatically)
 
 ### Disable Or Reduce User Access
 
@@ -576,7 +597,7 @@ WantedBy=timers.target
 - update the policy mapping
 - reconcile the bastion
 - ask affected users to log out and back in
-- ask affected users to run `bastion-kube-renew`
+- rely on timer-based renewal, or ask affected users to run `bastion-kube-renew` for immediate refresh
 
 ### Tool Updates
 
@@ -603,6 +624,7 @@ WantedBy=timers.target
 
 - verify `bastion-csr-approver.timer` is enabled and active
 - verify `bastion-csr-cleanup.timer` is enabled and active
+- verify `bastion-cert-renew.timer` is enabled and active
 - review certificate expiry with `bastion-kubeconfig-expiry`
 
 ### Manual Verification
