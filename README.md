@@ -238,6 +238,8 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `sudo bastion-manage-csr-timers --remove` - remove default CSR approver/cleanup systemd timers
 - `sudo bastion-manage-cluster-status-timer --install` - install timer that refreshes login-banner cluster status cache
 - `sudo bastion-cluster-probe` - run one-shot cluster status cache refresh
+- `sudo bastion-bootstrap-token-issue --user <user> --json` - issue short-lived bootstrap token via in-cluster issuer
+- `sudo bastion-bootstrap-token-revoke --user <user>` - revoke bootstrap token via in-cluster issuer
 - `bastion-kube-renew` - user self-service certificate renewal
 - `make help` - list convenience targets for local workflows and tests
 

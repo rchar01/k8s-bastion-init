@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROGRAM_NAME="bastion-bootstrap-token-revoke"
+
+resolve_lib_dir() {
+  local script_dir
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+  [[ -f /usr/local/lib/bastion/log.sh ]] && {
+    echo /usr/local/lib/bastion
+    return
+  }
+  [[ -f /usr/lib/bastion/log.sh ]] && {
+    echo /usr/lib/bastion
+    return
+  }
+  [[ -f "${script_dir}/../lib/log.sh" ]] && {
+    echo "${script_dir}/../lib"
+    return
+  }
+  [[ -f /bastion/lib/log.sh ]] && {
+    echo "/bastion/lib"
+    return
+  }
+
+  echo "bastion library not found" >&2
+  exit 1
+}
+
+LIB_DIR="$(resolve_lib_dir)"
+
+source "${LIB_DIR}/log.sh"
+source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/audit.sh"
+
+ADMIN_KUBECONFIG="/etc/kubernetes/admin.kubeconfig"
+ISSUER_SERVICE_NAME="bastion-token-issuer"
+ISSUER_SERVICE_PORT_NAME="http"
+ISSUER_BASE_PATH="/v1/bootstrap-tokens"
+
+TOKEN_ID=""
+TOKEN_VALUE=""
+TARGET_USER=""
+BEST_EFFORT=0
+
+usage() {
+  cat << EOF
+Usage:
+  bastion-bootstrap-token-revoke [--token-id ID | --token VALUE] [--user USER] [--best-effort]
+
+Revokes bootstrap token via in-cluster issuer workload.
+At least one of --token-id, --token, or --user must be provided.
+
+Options:
+  --token-id ID             token identifier
+  --token VALUE             full token value
+  --user USER               target user (issuer can resolve active token)
+  --best-effort             do not fail on revoke errors
+  --admin-kubeconfig FILE   admin kubeconfig (default: ${ADMIN_KUBECONFIG})
+EOF
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --token-id)
+        TOKEN_ID="$2"
+        shift 2
+        ;;
+      --token)
+        TOKEN_VALUE="$2"
+        shift 2
+        ;;
+      --user)
+        TARGET_USER="$2"
+        shift 2
+        ;;
+      --best-effort)
+        BEST_EFFORT=1
+        shift
+        ;;
+      --admin-kubeconfig)
+        ADMIN_KUBECONFIG="$2"
+        shift 2
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "Unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [[ -n "$TOKEN_ID" || -n "$TOKEN_VALUE" || -n "$TARGET_USER" ]] || die "Provide --token-id, --token, or --user"
+}
+
+issuer_raw_post() {
+  local path="$1"
+  local body_file="$2"
+
+  local raw_path
+  raw_path="/api/v1/namespaces/${CONTROLLER_NAMESPACE}/services/${ISSUER_SERVICE_PORT_NAME}:${ISSUER_SERVICE_NAME}/proxy${path}"
+
+  kubectl --kubeconfig "$ADMIN_KUBECONFIG" create --raw "$raw_path" -f "$body_file"
+}
+
+main() {
+  require_root
+
+  need_cmd kubectl
+  need_cmd jq
+  need_cmd mktemp
+
+  parse_args "$@"
+  [[ -f "$ADMIN_KUBECONFIG" ]] || die "Admin kubeconfig not found: $ADMIN_KUBECONFIG"
+
+  local req_file
+  req_file="$(mktemp)"
+
+  jq -n \
+    --arg tokenId "$TOKEN_ID" \
+    --arg token "$TOKEN_VALUE" \
+    --arg username "$TARGET_USER" \
+    '{tokenId: $tokenId, token: $token, username: $username}' > "$req_file"
+
+  audit_event "bootstrap_token_revoke" "start" "user=${TARGET_USER:-unknown} token_id=${TOKEN_ID:-unknown}"
+
+  if ! issuer_raw_post "${ISSUER_BASE_PATH}/revoke" "$req_file" > /dev/null 2> /tmp/bastion-token-revoke.err; then
+    audit_event "bootstrap_token_revoke" "error" "user=${TARGET_USER:-unknown} token_id=${TOKEN_ID:-unknown}"
+    if [[ "$BEST_EFFORT" -eq 1 ]]; then
+      log_warn "Token revoke failed (best-effort): $(tr '\n' ' ' < /tmp/bastion-token-revoke.err)"
+      rm -f "$req_file"
+      exit 0
+    fi
+    die "Token revoke failed: $(tr '\n' ' ' < /tmp/bastion-token-revoke.err)"
+  fi
+
+  audit_event "bootstrap_token_revoke" "ok" "user=${TARGET_USER:-unknown} token_id=${TOKEN_ID:-unknown}"
+  rm -f "$req_file"
+}
+
+main "$@"

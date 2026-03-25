@@ -3,6 +3,7 @@
 This guide covers operator installation, bootstrap, reconcile, and policy-rendering workflows for the Kubernetes Bastion Host Toolkit.
 
 For a high-level view of the bastion access model and certificate flow, see `docs/architecture.md`.
+For the canonical Kubernetes-side bootstrap/RBAC contract, see `docs/bastion-bootstrap-components.md`.
 
 ## Repository Placement
 
@@ -297,6 +298,8 @@ During users bootstrap, the admin kubeconfig template is also installed as:
 
 - **`bastion-bootstrap-user-groups`**: creates groups and updates supplementary group membership from policy
 - **`bastion-bootstrap-kubeconfig`**: creates `~/.kube/bootstrap` for users defined in policy
+- **`bastion-bootstrap-token-issue`**: requests short-lived bootstrap token from in-cluster issuer
+- **`bastion-bootstrap-token-revoke`**: revokes bootstrap token via in-cluster issuer
 - **`bastion-bootstrap-admin-kubeconfig`**: installs admin kubeconfigs for users in the `k8s-admin` policy group
 - **`bastion-disable-user`**: removes bastion-managed groups and disables active kubeconfigs for a target user
 - **`bastion-audit-kube-dirs`**: audits per-user `.kube` directories

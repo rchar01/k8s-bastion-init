@@ -5,6 +5,8 @@ bastion-bootstrap-machine
 bastion-bootstrap-users
 bastion-bootstrap-admin-kubeconfig
 bastion-bootstrap-kubeconfig
+bastion-bootstrap-token-issue
+bastion-bootstrap-token-revoke
 bastion-bootstrap-user-groups
 bastion-disable-user
 bastion-csr-approver

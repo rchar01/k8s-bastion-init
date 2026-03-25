@@ -43,6 +43,8 @@ LIB_DIR="$(resolve_lib_dir)"
 
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/audit.sh"
 
 # --------------------------------------------------
 # Defaults
@@ -51,7 +53,6 @@ source "${LIB_DIR}/common.sh"
 # default: 14 days
 RETENTION_SECONDS=$((14 * 24 * 60 * 60))
 POLICY="/etc/kubernetes/access-policy.yaml"
-EXPECTED_SIGNER=""
 
 usage() {
   cat << EOF
@@ -94,7 +95,7 @@ parse_args() {
 
 expired_csrs() {
   kubectl get csr -o json \
-    | jq -r --arg signer "$EXPECTED_SIGNER" \
+    | jq -r --arg signer "$CSR_SIGNER_NAME" \
       --argjson now "$(date +%s)" \
       --argjson retention "$RETENTION_SECONDS" '
       .items[]
@@ -115,6 +116,7 @@ delete_csr() {
 
   kubectl delete csr "$csr" > /dev/null
   log_info "Deleted expired CSR: $csr"
+  audit_event "csr_cleanup" "ok" "csr=${csr}"
 }
 
 # --------------------------------------------------
@@ -132,8 +134,6 @@ main() {
   parse_args "$@"
 
   [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
-  EXPECTED_SIGNER="$(yq -r '.csr.signerName' "$POLICY")"
-  [[ -n "$EXPECTED_SIGNER" && "$EXPECTED_SIGNER" != "null" ]] || die "csr.signerName missing in policy"
 
   log_debug "Retention seconds: $RETENTION_SECONDS"
 

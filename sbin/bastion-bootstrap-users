@@ -185,6 +185,8 @@ apply_users_state() {
   need_cmd bastion-login-profile
   need_cmd bastion-manage-csr-timers
   need_cmd bastion-manage-cluster-status-timer
+  need_cmd bastion-bootstrap-token-issue
+  need_cmd bastion-bootstrap-token-revoke
 
   log_info "Ensuring user groups"
   bastion-bootstrap-user-groups --policy "$POLICY_DST"

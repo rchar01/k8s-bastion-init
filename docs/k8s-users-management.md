@@ -3,6 +3,7 @@
 This guide explains how user access works on the bastion host.
 
 For operator installation, bootstrap, and reconcile workflows, see `docs/bastion-bootstrap.md`.
+For the canonical Kubernetes RBAC/bootstrap contract, see `docs/bastion-bootstrap-components.md`.
 
 ## Overview
 
@@ -16,12 +17,13 @@ Users do not get long-lived static kubeconfig credentials.
 
 ## Access Flow
 
-1. Admin bootstraps a user kubeconfig (`~/.kube/bootstrap`).
-2. User runs `bastion-kube-renew`.
-3. User CSR is submitted to Kubernetes.
-4. `bastion-csr-approver` runs via systemd timer and approves valid CSRs.
-5. User receives a signed certificate and `~/.kube/config` is rebuilt.
-6. Access expires automatically when the certificate expires.
+1. Admin issues a short-lived bootstrap token via in-cluster token issuer.
+2. Admin bootstraps a user kubeconfig (`~/.kube/bootstrap`) embedding that token.
+3. User runs `bastion-kube-renew`.
+4. User CSR is submitted to Kubernetes with signer `platform.example.io/client`.
+5. `bastion-csr-approver` runs via systemd timer and approves valid CSRs.
+6. User receives a signed certificate and `~/.kube/config` is rebuilt.
+7. Bootstrap token is revoked/cleaned after successful renewal.
 
 ## Core Files
 
@@ -29,12 +31,20 @@ Users do not get long-lived static kubeconfig credentials.
 - `~/.kube/bootstrap`: limited kubeconfig used to submit CSRs
 - `~/.kube/config`: active user kubeconfig with signed cert
 
+Token issuance dependency:
+
+- in-cluster issuer service reachable via Kubernetes service proxy at
+  `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-tokens`
+- bootstrap tokens are short-lived enrollment credentials and are revoked after successful renewal
+
 ## Main Commands
 
 | Command | Purpose |
 | --- | --- |
-| `sudo bastion-bootstrap-kubeconfig --user <user>` | Create bootstrap kubeconfig for one user |
+| `sudo bastion-bootstrap-token-issue --user <user> --json` | Issue short-lived bootstrap token via issuer workload |
+| `sudo bastion-bootstrap-kubeconfig --user <user>` | Create bootstrap kubeconfig for one user (token-backed) |
 | `sudo bastion-bootstrap-kubeconfig --all` | Create bootstrap kubeconfigs for all policy users present on host |
+| `sudo bastion-bootstrap-token-revoke --user <user>` | Revoke bootstrap token via issuer workload |
 | `bastion-kube-renew` | User self-service certificate renewal |
 | `sudo bastion-csr-approver` | Validate and approve bastion CSRs |
 | `sudo bastion-csr-cleanup` | Delete old bastion CSRs |

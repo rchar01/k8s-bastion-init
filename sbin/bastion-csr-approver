@@ -36,13 +36,14 @@ LIB_DIR="$(resolve_lib_dir)"
 
 source "${LIB_DIR}/log.sh"
 source "${LIB_DIR}/common.sh"
+source "${LIB_DIR}/contract.sh"
+source "${LIB_DIR}/audit.sh"
 
 # --------------------------------------------------
 # Defaults
 # --------------------------------------------------
 
 POLICY="/etc/kubernetes/access-policy.yaml"
-EXPECTED_SIGNER=""
 GROUP_PREFIX=""
 
 usage() {
@@ -96,6 +97,14 @@ csr_username() {
   kubectl get csr "$1" -o jsonpath='{.spec.username}'
 }
 
+csr_request_groups() {
+  kubectl get csr "$1" -o jsonpath='{.spec.groups[*]}'
+}
+
+csr_expiration_seconds() {
+  kubectl get csr "$1" -o jsonpath='{.spec.expirationSeconds}'
+}
+
 csr_request() {
   kubectl get csr "$1" -o jsonpath='{.spec.request}'
 }
@@ -132,27 +141,43 @@ approve_csr() {
 validate_csr() {
   local csr="$1"
 
-  local user req subj cn groups host_groups valid=true signer usages
+  local user req subj cn groups host_groups valid=true signer usages requester_groups expiration
 
   signer="$(csr_signer "$csr")"
   usages="$(csr_usages "$csr")"
 
-  if [[ "$signer" != "$EXPECTED_SIGNER" ]]; then
-    log_warn "DENY $csr - signer mismatch (signer=$signer expected=$EXPECTED_SIGNER)"
+  if [[ "$signer" != "$CSR_SIGNER_NAME" ]]; then
+    log_warn "DENY $csr - signer mismatch (signer=$signer expected=$CSR_SIGNER_NAME)"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=signer_mismatch signer=${signer}"
     return 1
   fi
 
   if [[ "$usages" != "client auth" ]]; then
     log_warn "DENY $csr - unsupported usages: $usages"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=bad_usages usages=${usages}"
+    return 1
+  fi
+
+  expiration="$(csr_expiration_seconds "$csr")"
+  if [[ -z "$expiration" || ! "$expiration" =~ ^[0-9]+$ ]]; then
+    log_warn "DENY $csr - invalid expirationSeconds"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=bad_expiration"
+    return 1
+  fi
+  if ((expiration < CLIENT_CERT_TTL_MIN_SECONDS || expiration > CLIENT_CERT_TTL_MAX_SECONDS)); then
+    log_warn "DENY $csr - expirationSeconds out of range ($expiration)"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=expiration_out_of_range expiration=${expiration}"
+    return 1
+  fi
+
+  requester_groups="$(csr_request_groups "$csr")"
+  if ! grep -qw "$BOOTSTRAP_AUTH_GROUP" <<< "$requester_groups"; then
+    log_warn "DENY $csr - requester not in bootstrap auth group"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=missing_bootstrap_group requester_groups=${requester_groups}"
     return 1
   fi
 
   user="$(csr_username "$csr")"
-
-  if ! user_exists "$user"; then
-    log_warn "DENY $csr — user does not exist: $user"
-    return 1
-  fi
 
   req="$(csr_request "$csr")"
   subj="$(csr_subject "$req")"
@@ -160,8 +185,17 @@ validate_csr() {
   cn="$(echo "$subj" | subject_cn)"
   groups="$(echo "$subj" | subject_groups || true)"
 
-  if [[ "$cn" != "$user" ]]; then
-    log_warn "DENY $csr — CN mismatch (cn=$cn user=$user)"
+  user="$cn"
+
+  if ! user_exists "$user"; then
+    log_warn "DENY $csr — CN user does not exist: $user"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=unknown_user user=${user}"
+    return 1
+  fi
+
+  if [[ -z "$groups" ]]; then
+    log_warn "DENY $csr — no groups requested"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=no_groups user=${user}"
     return 1
   fi
 
@@ -174,6 +208,7 @@ validate_csr() {
 
   if [[ "$valid" != true ]]; then
     log_warn "DENY $csr — group mismatch for $user"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=group_mismatch user=${user}"
     return 1
   fi
 
@@ -188,6 +223,7 @@ process_csr() {
   if validate_csr "$csr"; then
     approve_csr "$csr"
     log_info "APPROVED $csr"
+    audit_event "csr_approve" "ok" "csr=${csr}"
   fi
 }
 
@@ -210,9 +246,7 @@ main() {
   parse_args "$@"
 
   [[ -f "$POLICY" ]] || die "Policy not found: $POLICY"
-  EXPECTED_SIGNER="$(yq -r '.csr.signerName' "$POLICY")"
   GROUP_PREFIX="$(yq -r '.csr.groupPrefix' "$POLICY")"
-  [[ -n "$EXPECTED_SIGNER" && "$EXPECTED_SIGNER" != "null" ]] || die "csr.signerName missing in policy"
   [[ -n "$GROUP_PREFIX" && "$GROUP_PREFIX" != "null" ]] || die "csr.groupPrefix missing in policy"
 
   local found=0
