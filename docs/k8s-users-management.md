@@ -165,6 +165,8 @@ sudo bastion-manage-csr-timers --remove
 
 This includes stale pending/denied requests as well as already-issued CSRs.
 
+Cleanup policy is intentionally scoped (policy signer + bastion label + age) to avoid indiscriminate cluster-wide CSR deletion.
+
 Example:
 
 ```bash

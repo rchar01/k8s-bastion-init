@@ -71,18 +71,24 @@ Owns CSR bootstrap capabilities and bindings:
 - `capability-k8s-csr-cleanup`
   - CSR verbs: `get`, `list`, `watch`, `delete`
 - `capability-k8s-bootstrap-token-issuer`
-  - secret verbs in `kube-system`: `create`, `get`, `list`, `watch`, `update`, `patch`, `delete`
+  - namespaced `Role` in `kube-system`
+  - Secret verbs in `kube-system`: `create`, `get`, `delete`
 
 Least-privilege guidance for issuer capability:
 
-- prefer only the verbs your issuer implementation actually needs (typically `create` and `delete`, with `get` only if required)
+- keep issuer permissions namespaced to `kube-system` via `Role` + `RoleBinding`
 - avoid `list`/`watch` on Secrets unless there is a hard operational requirement, because they expose Secret data
-- keep permissions namespace-scoped to `kube-system` (do not grant cluster-wide Secret access)
+- keep verbs minimal (`create`, `get`, `delete`) unless issuer behavior requires additional operations
+- do not rely on RBAC for Secret name-prefix constraints; issuer logic must enforce namespace, name format, labels, and TTL policy
 
 Source paths:
 
 - `helm-charts/platform/rbac-policy`
 - `platform-deployments/platform/rbac-policy`
+
+Related hardening guidance:
+
+- `docs/rbac-hardening.md`
 
 ## Binding Model
 
@@ -95,7 +101,7 @@ Cluster bindings:
 
 Namespace binding:
 
-- token issuer: `ServiceAccount` `bastion-token-issuer` in `bastion-system` -> `capability-k8s-bootstrap-token-issuer` in namespace `kube-system`
+- token issuer: `ServiceAccount` `bastion-token-issuer` in `bastion-system` -> `Role` `capability-k8s-bootstrap-token-issuer` via `RoleBinding` in namespace `kube-system`
 
 ## Signer and CSR Contract
 

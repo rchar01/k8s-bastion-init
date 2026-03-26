@@ -294,6 +294,8 @@ Bootstrap token workflow notes:
 - Token issue/revoke uses API server service proxy paths, so requests are authenticated/authorized and audited by Kubernetes API server.
 - Control plane prerequisite: bootstrap-token auth and token cleanup (`tokencleaner`) must be enabled in the cluster.
 
+For RBAC/controller hardening requirements and verification points, see `docs/rbac-hardening.md`.
+
 ## Testing
 
 A comprehensive Podman-based test suite is available. See `tests/README.md` for full details.
