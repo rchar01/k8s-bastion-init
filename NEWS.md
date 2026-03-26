@@ -4,6 +4,19 @@ This file gives a short, release-oriented view of what changed between versions.
 
 ## Unreleased
 
+## 1.6.0
+
+Compared with `1.5.0`:
+
+- replaces the `pkexec` login bootstrap helper flow with a root-owned local daemon (`bastion-bootstrapd`) and Unix socket API
+- adds daemon service lifecycle management and policy-driven daemon settings (socket path, request limits, timeouts, and backoff)
+- moves privileged daemon/client Python logic to `lib/python` with shell wrappers so shellcheck workflows remain intact
+- adds offline daemon scenario test coverage and expands verification checks for daemon service/policy expectations
+- strengthens CSR security controls with strict identity binding, duplicate pending CSR denial, and explicit system identity/group rejection
+- hardens root token issue/revoke script temp-file handling and tightens revoke/cache consistency semantics
+- broadens CSR cleanup to remove stale bastion-managed requests by signer/label/retention policy
+- consolidates RBAC hardening documentation into `docs/rbac-hardening.md` and updates component/workflow docs accordingly
+
 ## 1.5.0
 
 Compared with `1.4.0`:

@@ -7,6 +7,33 @@ and adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-26
+
+### Added
+- Add root-owned local login bootstrap daemon (`bastion-bootstrapd`) and socket client wrappers for privileged token operations.
+- Add daemon service management command `bastion-manage-bootstrapd` and install path integration in user bootstrap.
+- Add daemon policy keys (`daemon.allowedLoginGroup`, socket path, request limits, timeout, and backoff) to access-policy contract.
+- Add offline daemon scenario coverage in `tests/scenarios/test-bootstrap-daemon.sh` and include it in the main test suite.
+- Add `docs/rbac-hardening.md` as the canonical RBAC/controller hardening guide.
+
+### Changed
+- Replace `pkexec` login bootstrap helper flow with local daemon-mediated issue/revoke operations.
+- Move privileged daemon/client Python implementations into `lib/python` with shell wrappers in `bin/` and `sbin/` for shellcheck compatibility.
+- Update machine bootstrap to install Python runtime when missing and deploy runtime Python modules under bastion lib directory.
+- Tighten CSR approver logic with strict requester-to-CN identity binding, bootstrap token owner checks, duplicate pending CSR denial, and system identity/group denial.
+- Strengthen generated systemd units for CSR and status/renew timer services with additional sandbox hardening directives.
+- Refresh RBAC and workflow documentation to reflect namespaced issuer role/binding model and controller-enforced policy boundaries.
+
+### Fixed
+- Fix unsafe predictable temporary error-file usage in root token issue/revoke scripts by switching to `mktemp` with cleanup traps.
+- Fix bootstrap daemon revoke semantics to require successful revoke before clearing local token cache state.
+- Fix single-active-token behavior by revoking cached live token before issuing replacement when local bootstrap kubeconfig is missing.
+- Fix cleanup scope to include stale bastion-managed CSRs by signer/label/age policy instead of leaving old pending/denied objects indefinitely.
+
+### Removed
+- Remove legacy root helper script `libexec/bastion-bootstrap-helper` and obsolete design notes file `root-daemon-for-login-auto-bootstrap.md`.
+- Remove root-level `hardening-spec-guide.md` and consolidate relevant guidance into docs.
+
 ## [1.5.0] - 2026-03-24
 
 ### Added
