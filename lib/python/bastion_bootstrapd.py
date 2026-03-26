@@ -252,6 +252,7 @@ class BootstrapDaemon:
         cache = read_json_file(self.token_cache_path(uid))
         if cache:
             expires_at = parse_iso8601(str(cache.get("expiresAt", "")))
+            cache_token_id = str(cache.get("tokenId") or "")
             if expires_at and expires_at > dt.datetime.now(dt.timezone.utc):
                 bootstrap_path = Path(user.pw_dir) / ".kube/bootstrap"
                 if bootstrap_path.is_file():
@@ -262,6 +263,20 @@ class BootstrapDaemon:
                         "bootstrapKubeconfigPath": str(bootstrap_path),
                         "reused": True,
                     }
+
+                if cache_token_id:
+                    run_cmd(
+                        [
+                            "/usr/local/sbin/bastion-bootstrap-token-revoke",
+                            "--token-id",
+                            cache_token_id,
+                        ],
+                        timeout_seconds=self.request_timeout,
+                    )
+
+                self.token_cache_path(uid).unlink(missing_ok=True)
+            else:
+                self.token_cache_path(uid).unlink(missing_ok=True)
 
         cmd = [
             "/usr/local/sbin/bastion-bootstrap-token-issue",
@@ -319,13 +334,10 @@ class BootstrapDaemon:
         if cached_token_id and token_id != cached_token_id:
             raise DaemonError("token_not_owned_by_uid")
 
-        cmd = ["/usr/local/sbin/bastion-bootstrap-token-revoke", "--token-id", token_id, "--best-effort"]
-        try:
-            run_cmd(cmd, timeout_seconds=self.request_timeout)
-            self.token_cache_path(uid).unlink(missing_ok=True)
-            return {"revoked": True, "tokenId": token_id}
-        except DaemonError:
-            return {"revoked": False, "tokenId": token_id}
+        cmd = ["/usr/local/sbin/bastion-bootstrap-token-revoke", "--token-id", token_id]
+        run_cmd(cmd, timeout_seconds=self.request_timeout)
+        self.token_cache_path(uid).unlink(missing_ok=True)
+        return {"revoked": True, "tokenId": token_id}
 
     def dispatch(self, action: str, uid: int, user: pwd.struct_passwd, payload: dict[str, Any]) -> dict[str, Any]:
         if action == "health":

@@ -45,6 +45,8 @@ source "${LIB_DIR}/audit.sh"
 # --------------------------------------------------
 
 POLICY="${POLICY_FILE}"
+BOOTSTRAP_TOKEN_STATE_DIR="/var/lib/bastion/bootstrap-tokens"
+BOOTSTRAP_DAEMON_TOKEN_CACHE_DIR="/run/bastion-bootstrapd/tokens"
 
 usage() {
   cat << EOF
@@ -134,6 +136,46 @@ approve_csr() {
   kubectl certificate approve "$1" > /dev/null
 }
 
+bootstrap_token_owner_for_requester() {
+  local requester="$1"
+  local token_id file owner
+
+  [[ "$requester" == system:bootstrap:* ]] || return 1
+  token_id="${requester#system:bootstrap:}"
+  [[ -n "$token_id" ]] || return 1
+
+  for file in "$BOOTSTRAP_DAEMON_TOKEN_CACHE_DIR"/*.json "$BOOTSTRAP_TOKEN_STATE_DIR"/*.json; do
+    [[ -f "$file" ]] || continue
+    owner="$(jq -r --arg tokenId "$token_id" 'if .tokenId == $tokenId then (.user // "") else "" end' "$file" 2> /dev/null || true)"
+    if [[ -n "$owner" ]]; then
+      printf '%s\n' "$owner"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+has_duplicate_pending_for_requester() {
+  local csr="$1"
+  local requester="$2"
+  local dup_count
+
+  dup_count="$(kubectl get csr -l 'bastion-access=true' -o json 2> /dev/null | jq -r --arg csr "$csr" --arg requester "$requester" '
+    [
+      .items[]
+      | select(.metadata.name != $csr)
+      | select(.spec.username == $requester)
+      | select(.status.certificate == null)
+      | select((.status.conditions // []) | length == 0)
+    ]
+    | length
+  ' 2> /dev/null || echo 0)"
+
+  [[ "$dup_count" =~ ^[0-9]+$ ]] || dup_count=0
+  ((dup_count > 0))
+}
+
 # --------------------------------------------------
 # Validation Logic
 # --------------------------------------------------
@@ -141,7 +183,7 @@ approve_csr() {
 validate_csr() {
   local csr="$1"
 
-  local user requester req subj cn groups host_groups valid=true signer usages requester_groups expiration
+  local user requester req subj cn groups host_groups valid=true signer usages requester_groups expiration token_owner
 
   signer="$(csr_signer "$csr")"
   usages="$(csr_usages "$csr")"
@@ -179,14 +221,37 @@ validate_csr() {
   cn="$(echo "$subj" | subject_cn)"
   groups="$(echo "$subj" | subject_groups || true)"
 
+  if [[ -z "$cn" ]]; then
+    log_warn "DENY $csr - missing subject CN"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=missing_cn requester=${requester}"
+    return 1
+  fi
+
+  if [[ "$cn" == system:* ]]; then
+    log_warn "DENY $csr - system CN not allowed: $cn"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=system_cn cn=${cn}"
+    return 1
+  fi
+
   user="$cn"
 
-  if ! grep -qw "$BOOTSTRAP_AUTH_GROUP" <<< "$requester_groups"; then
-    if [[ "$requester" != "$cn" ]]; then
-      log_warn "DENY $csr - requester identity mismatch"
-      audit_event "csr_approve" "deny" "csr=${csr} reason=requester_mismatch requester=${requester} cn=${cn}"
+  if has_duplicate_pending_for_requester "$csr" "$requester"; then
+    log_warn "DENY $csr - duplicate pending CSR for requester"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=duplicate_pending requester=${requester}"
+    return 1
+  fi
+
+  if grep -qw "$BOOTSTRAP_AUTH_GROUP" <<< "$requester_groups"; then
+    token_owner="$(bootstrap_token_owner_for_requester "$requester" || true)"
+    if [[ -z "$token_owner" || "$token_owner" != "$cn" ]]; then
+      log_warn "DENY $csr - bootstrap token owner mismatch"
+      audit_event "csr_approve" "deny" "csr=${csr} reason=bootstrap_owner_mismatch requester=${requester} cn=${cn} owner=${token_owner:-none}"
       return 1
     fi
+  elif [[ "$requester" != "$cn" ]]; then
+    log_warn "DENY $csr - requester identity mismatch"
+    audit_event "csr_approve" "deny" "csr=${csr} reason=requester_mismatch requester=${requester} cn=${cn}"
+    return 1
   fi
 
   if ! user_exists "$user"; then
@@ -204,6 +269,13 @@ validate_csr() {
   host_groups="$(user_groups "$user")"
 
   for g in $groups; do
+    case "$g" in
+      system:masters | system:nodes | system:serviceaccounts | system:serviceaccounts:* | system:kube-* | system:node:*)
+        log_warn "DENY $csr - forbidden group requested: $g"
+        audit_event "csr_approve" "deny" "csr=${csr} reason=forbidden_group group=${g} user=${user}"
+        return 1
+        ;;
+    esac
     [[ "$g" == "${GROUP_PREFIX}"* ]] || valid=false
     echo "$host_groups" | grep -qw "$g" || valid=false
   done
@@ -242,6 +314,7 @@ main() {
   need_cmd yq
   need_cmd getent
   need_cmd id
+  need_cmd jq
   need_cmd grep
   need_cmd sed
 

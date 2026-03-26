@@ -134,9 +134,13 @@ Important:
 - signer matches configured policy signer
 - CSR usages are `client auth`
 - CSR requested `expirationSeconds` is within allowed bounds (1h..24h)
-- requester must be either in bootstrap auth group `system:bootstrappers:platform-users` or match CN identity fallback
+- requester identity must match subject CN
+  - for bootstrap identities (`system:bootstrap:<token-id>` + bootstrap auth group), approver resolves token owner from bastion token state and requires owner == subject CN
 - subject CN resolves to an existing host user
+- subject CN cannot be a `system:*` identity
+- duplicate pending CSR requests for same requester are denied
 - all requested groups use the configured group prefix
+- privileged/system groups (for example `system:masters`, `system:nodes`, `system:serviceaccounts:*`) are denied
 - all requested groups are present in host group membership for that user
 
 It does not re-check whether the user appears under `.users` in policy or whether each requested group is defined under `.groups`.
@@ -153,12 +157,13 @@ sudo bastion-manage-csr-timers --remove
 
 ## Cleanup Behavior
 
-`bastion-csr-cleanup` removes only bastion-managed CSRs that are:
+`bastion-csr-cleanup` removes bastion-managed CSRs that are:
 
 - labeled `bastion-access=true`
 - signed with the configured policy signer
-- already issued (`status.certificate` present)
 - older than retention window (default: 14 days)
+
+This includes stale pending/denied requests as well as already-issued CSRs.
 
 Example:
 

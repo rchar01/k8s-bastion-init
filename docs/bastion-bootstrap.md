@@ -573,7 +573,16 @@ Description=Bastion CSR approver
 
 [Service]
 Type=oneshot
+Environment=KUBECONFIG=/etc/bastion/admin.kubeconfig
 ExecStart=/usr/local/sbin/bastion-csr-approver
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ```
 
 Approver timer:
@@ -599,7 +608,16 @@ Description=Bastion CSR cleanup
 
 [Service]
 Type=oneshot
+Environment=KUBECONFIG=/etc/bastion/admin.kubeconfig
 ExecStart=/usr/local/sbin/bastion-csr-cleanup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=false
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 ```
 
 Cleanup timer:

@@ -134,8 +134,10 @@ main() {
   [[ -f "$ADMIN_KUBECONFIG" ]] || die "Admin kubeconfig not found: $ADMIN_KUBECONFIG"
   getent passwd "$TARGET_USER" > /dev/null 2>&1 || die "User not found: $TARGET_USER"
 
-  local req resp token_id expires_at bootstrap_kubeconfig
+  local req resp token_id expires_at bootstrap_kubeconfig err_file
   req="$(mktemp)"
+  err_file="$(mktemp)"
+  trap 'rm -f "$req" "$err_file"' EXIT
 
   jq -n \
     --arg user "$TARGET_USER" \
@@ -144,9 +146,9 @@ main() {
     '{user: $user, reason: $reason, ttlSeconds: $ttlSeconds}' > "$req"
 
   audit_event "bootstrap_token_issue" "start" "user=${TARGET_USER} reason=${REASON} ttl=${TTL_SECONDS}"
-  if ! resp="$(issuer_post "/v1/bootstrap-token/issue" "$req" 2> /tmp/bastion-token-issue.err)"; then
+  if ! resp="$(issuer_post "/v1/bootstrap-token/issue" "$req" 2> "$err_file")"; then
     audit_event "bootstrap_token_issue" "error" "user=${TARGET_USER} reason=${REASON}"
-    die "Issuer issue call failed: $(tr '\n' ' ' < /tmp/bastion-token-issue.err)"
+    die "Issuer issue call failed: $(tr '\n' ' ' < "$err_file")"
   fi
 
   token_id="$(jq -r '.tokenId // empty' <<< "$resp")"
@@ -168,8 +170,6 @@ main() {
   else
     printf '%s\n' "$bootstrap_kubeconfig"
   fi
-
-  rm -f "$req"
 }
 
 main "$@"
