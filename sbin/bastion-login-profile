@@ -129,7 +129,7 @@ generate_profile() {
 BASTION_USER_TOOLS="$user_tools"
 BASTION_ADMIN_TOOLS="$admin_tools"
 BASTION_ADMIN_GROUP="$ADMIN_GROUP"
-BASTION_HELPERS="bastion-kube-renew bastion-kubeconfig-expiry bastion-version"
+BASTION_HELPERS="bastion-renew-cert bastion-kubeconfig-expiry bastion-version"
 BASTION_CLUSTER_STATUS_CACHE="/run/bastion-cluster-status.json"
 BASTION_CLUSTER_STATUS_STALE_SECONDS="90"
 
@@ -201,7 +201,7 @@ _bastion_set_cert_state() {
   if ((remaining <= 0)); then
     BASTION_USER_CERT_DISPLAY="expired"
     BASTION_USER_CERT_STATE="EXPIRED"
-    _bastion_notice_add "CRIT" "Client cert expired. Run: bastion-kube-renew"
+    _bastion_notice_add "CRIT" "Client cert expired. Run: bastion-renew-cert"
     return 0
   fi
 
@@ -217,10 +217,10 @@ _bastion_set_cert_state() {
     BASTION_USER_CERT_STATE="OK"
   elif ((remaining >= 86400)); then
     BASTION_USER_CERT_STATE="WARN"
-    _bastion_notice_add "WARN" "Client cert expires in \${BASTION_USER_CERT_DISPLAY}. Run: bastion-kube-renew"
+    _bastion_notice_add "WARN" "Client cert expires in \${BASTION_USER_CERT_DISPLAY}. Run: bastion-renew-cert"
   else
     BASTION_USER_CERT_STATE="CRIT"
-    _bastion_notice_add "CRIT" "Client cert expires in \${BASTION_USER_CERT_DISPLAY}. Run: bastion-kube-renew"
+    _bastion_notice_add "CRIT" "Client cert expires in \${BASTION_USER_CERT_DISPLAY}. Run: bastion-renew-cert"
   fi
 }
 
@@ -237,7 +237,7 @@ _bastion_collect_user_status() {
 
   if [[ ! -f "\$kubeconfig" ]]; then
     if [[ -f "\$HOME/.kube/bootstrap" ]]; then
-      _bastion_notice_add "WARN" "No active kubeconfig. Bootstrap found - run: bastion-kube-renew"
+      _bastion_notice_add "WARN" "No active kubeconfig. Bootstrap found - run: bastion-renew-cert"
     else
       _bastion_notice_add "CRIT" "No kubeconfig or bootstrap. Ask admin: sudo bastion-bootstrap-kubeconfig --user \$USER"
     fi
@@ -248,7 +248,7 @@ _bastion_collect_user_status() {
   context="\$(jq -r '.["current-context"] // ""' <<< "\$json")"
 
   if [[ -z "\$json" || -z "\$context" ]]; then
-    _bastion_notice_add "CRIT" "User kubeconfig is invalid. Run: bastion-kube-renew"
+    _bastion_notice_add "CRIT" "User kubeconfig is invalid. Run: bastion-renew-cert"
     return 0
   fi
 
@@ -288,7 +288,7 @@ _bastion_collect_user_status() {
     BASTION_USER_CERT_DISPLAY="-"
     BASTION_USER_CERT_STATE="UNKNOWN"
     if [[ -f "\$HOME/.kube/bootstrap" ]]; then
-      _bastion_notice_add "WARN" "No user client certificate. Run: bastion-kube-renew"
+      _bastion_notice_add "WARN" "No user client certificate. Run: bastion-renew-cert"
     fi
   fi
 }

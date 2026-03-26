@@ -136,7 +136,7 @@ sudo ./bastion_reconcile.sh prod
 sudo ./bastion_init.sh test --offline-bootstrap
 
 # User certificate renewal
-bastion-kube-renew
+bastion-renew-cert
 
 # Admin verification
 kubectl cluster-info
@@ -270,7 +270,7 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `sudo bastion-bootstrap-token-revoke --token-id <id>` - revoke bootstrap token via in-cluster issuer
 - `bastion-login-bootstrap --quiet` - login-triggered best-effort auto-bootstrap
 - `bastion-renew-cert --quiet` - non-interactive renewal engine
-- `bastion-kube-renew` - manual renewal wrapper
+- `bastion-renew-cert` - user self-service renewal command
 - `make help` - list convenience targets for local workflows and tests
 
 For the full script reference, see `docs/bastion-bootstrap.md` and `docs/k8s-users-management.md`.

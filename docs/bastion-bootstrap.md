@@ -355,7 +355,6 @@ CSR timer services run `kubectl` with:
 - **`bastion-login-bootstrap`**: login-triggered best-effort auto-bootstrap orchestration
 - **`bastion-enroll-cert`**: bootstrap enrollment engine
 - **`bastion-renew-cert`**: non-interactive renewal engine
-- **`bastion-kube-renew`**: manual wrapper for `bastion-renew-cert`
 - **`bastion-kube-state`**: machine-readable credential state classifier
 - **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
 
@@ -456,13 +455,13 @@ Notice catalog:
 
 | Severity | Notice text | Meaning | Recommended action |
 | --- | --- | --- | --- |
-| `CRIT` | `Client cert expired. Run: bastion-kube-renew` | User cert is no longer valid | Run `bastion-kube-renew` |
-| `CRIT` | `Client cert expires in <Nh>. Run: bastion-kube-renew` | User cert is below 24h lifetime | Run `bastion-kube-renew` now |
-| `WARN` | `Client cert expires in <Nd>. Run: bastion-kube-renew` | User cert has 1-3 days left | Renew soon with `bastion-kube-renew` |
-| `WARN` | `No active kubeconfig. Bootstrap found - run: bastion-kube-renew` | `~/.kube/config` missing, bootstrap exists | Run `bastion-kube-renew` |
+| `CRIT` | `Client cert expired. Run: bastion-renew-cert` | User cert is no longer valid | Run `bastion-renew-cert` |
+| `CRIT` | `Client cert expires in <Nh>. Run: bastion-renew-cert` | User cert is below 24h lifetime | Run `bastion-renew-cert` now |
+| `WARN` | `Client cert expires in <Nd>. Run: bastion-renew-cert` | User cert has 1-3 days left | Renew soon with `bastion-renew-cert` |
+| `WARN` | `No active kubeconfig. Bootstrap found - run: bastion-renew-cert` | `~/.kube/config` missing, bootstrap exists | Run `bastion-renew-cert` |
 | `CRIT` | `No kubeconfig or bootstrap. Ask admin: sudo bastion-bootstrap-kubeconfig --user <user>` | User cannot self-recover | Admin runs `sudo bastion-bootstrap-kubeconfig --user <user>` |
-| `CRIT` | `User kubeconfig is invalid. Run: bastion-kube-renew` | Kubeconfig exists but is malformed/unreadable | Run `bastion-kube-renew` |
-| `WARN` | `No user client certificate. Run: bastion-kube-renew` | Kubeconfig has no usable client cert | Run `bastion-kube-renew` |
+| `CRIT` | `User kubeconfig is invalid. Run: bastion-renew-cert` | Kubeconfig exists but is malformed/unreadable | Run `bastion-renew-cert` |
+| `WARN` | `No user client certificate. Run: bastion-renew-cert` | Kubeconfig has no usable client cert | Run `bastion-renew-cert` |
 | `CRIT` | `Admin probe kubeconfig missing: /etc/bastion/admin.kubeconfig` | Cluster health probe cannot run | Restore `/etc/bastion/admin.kubeconfig` |
 | `CRIT` | `Cluster API is unreachable` | API `/readyz` probe failed | Check API endpoint/network/auth from bastion |
 | `WARN` | `Cluster has NotReady nodes (<ready>/<total> Ready)` | API is up but node readiness degraded | Investigate node readiness in cluster |
@@ -675,7 +674,7 @@ WantedBy=timers.target
 - update the policy mapping
 - reconcile the bastion
 - ask affected users to log out and back in
-- rely on timer-based renewal, or ask affected users to run `bastion-kube-renew` for immediate refresh
+- rely on timer-based renewal, or ask affected users to run `bastion-renew-cert` for immediate refresh
 
 ### Tool Updates
 

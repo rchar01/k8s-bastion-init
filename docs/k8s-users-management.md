@@ -69,7 +69,7 @@ Control plane prerequisites:
 | `sudo bastion-manage-bootstrapd --install` | Install or update login bootstrap daemon service |
 | `bastion-login-bootstrap --quiet` | Login-triggered auto-bootstrap orchestration (best-effort) |
 | `bastion-enroll-cert --reason login-recovery` | Bootstrap-based enrollment using temporary `~/.kube/bootstrap` |
-| `bastion-kube-renew` | User self-service certificate renewal |
+| `bastion-renew-cert` | User self-service certificate renewal |
 | `bastion-renew-cert --quiet` | Non-interactive renewal engine (used by timer) |
 | `sudo bastion-manage-cert-renew-timer --install` | Install transparent cert renewal timer |
 | `sudo bastion-csr-approver` | Validate and approve bastion CSRs |
@@ -103,10 +103,10 @@ Users not present on the Linux host are skipped.
 Run as regular user (not root):
 
 ```bash
-bastion-kube-renew
+bastion-renew-cert
 ```
 
-`bastion-kube-renew` (wrapper for `bastion-renew-cert`):
+`bastion-renew-cert`:
 
 - reads policy for signer, TTL, and group prefix
 - derives requested groups from the user's current host groups
@@ -246,7 +246,7 @@ kubectl get csr
 sudo bastion-csr-approver
 ```
 
-### `bastion-kube-renew` says no matching groups
+### `bastion-renew-cert` says no matching groups
 
 - confirm user is in at least one group with policy prefix (default `k8s-`)
 - confirm policy `csr.groupPrefix` matches your group naming convention

@@ -249,7 +249,7 @@ verify_users() {
   log_info "Configured users in policy: $user_count"
 
   log_info "Users bootstrap finished successfully."
-  log_info "Users can now run: bastion-kube-renew"
+  log_info "Users can now run: bastion-renew-cert"
 }
 
 # --------------------------------------------------

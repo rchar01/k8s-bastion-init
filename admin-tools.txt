@@ -20,3 +20,4 @@ bastion-cert-renew-all
 bastion-install-containerd
 bastion-install-tools
 bastion-login-profile
+bastion-render-policy
