@@ -73,6 +73,12 @@ Owns CSR bootstrap capabilities and bindings:
 - `capability-k8s-bootstrap-token-issuer`
   - secret verbs in `kube-system`: `create`, `get`, `list`, `watch`, `update`, `patch`, `delete`
 
+Least-privilege guidance for issuer capability:
+
+- prefer only the verbs your issuer implementation actually needs (typically `create` and `delete`, with `get` only if required)
+- avoid `list`/`watch` on Secrets unless there is a hard operational requirement, because they expose Secret data
+- keep permissions namespace-scoped to `kube-system` (do not grant cluster-wide Secret access)
+
 Source paths:
 
 - `helm-charts/platform/rbac-policy`

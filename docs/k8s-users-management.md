@@ -50,7 +50,13 @@ Token issuance dependency:
 
 - in-cluster issuer service reachable via Kubernetes service proxy at
   `/api/v1/namespaces/bastion-system/services/http:bastion-token-issuer/proxy/v1/bootstrap-token/issue`
-- bootstrap tokens are short-lived enrollment credentials and are revoked after successful renewal
+- bootstrap tokens are short-lived enrollment credentials and are revoked after successful enrollment/recovery
+- service-proxy requests are handled by Kubernetes API server authn/authz and appear in API audit logs
+
+Control plane prerequisites:
+
+- bootstrap-token authenticator enabled on Kubernetes API server
+- bootstrap token cleanup controller (`tokencleaner`) enabled so expired token Secrets are removed
 
 ## Main Commands
 
@@ -201,6 +207,7 @@ Important:
 - remove the user from policy first, otherwise a later reconcile can add groups back
 - for former admins, removing Unix groups alone is not enough; the active kubeconfig must also be removed or disabled
 - existing short-lived certificates copied elsewhere remain valid until their TTL expires
+- revoking a bootstrap token only affects future bearer-token bootstrap auth; it does not invalidate already-issued client certificates
 
 ## Troubleshooting
 

@@ -286,6 +286,14 @@ User access is based on short-lived certificates with login-triggered bootstrap
 recovery and timer-driven transparent renewal. For the detailed flow,
 see `docs/k8s-users-management.md`.
 
+Bootstrap token workflow notes:
+
+- Bootstrap tokens are used only as short-lived enrollment credentials for `~/.kube/bootstrap`.
+- `sudo bastion-bootstrap-token-revoke` prevents future bootstrap-token auth, but does not revoke already-issued client certificates.
+- Issued client certificates remain valid until TTL expiry (or normal cert rotation replaces them).
+- Token issue/revoke uses API server service proxy paths, so requests are authenticated/authorized and audited by Kubernetes API server.
+- Control plane prerequisite: bootstrap-token auth and token cleanup (`tokencleaner`) must be enabled in the cluster.
+
 ## Testing
 
 A comprehensive Podman-based test suite is available. See `tests/README.md` for full details.
