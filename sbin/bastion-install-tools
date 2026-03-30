@@ -58,7 +58,7 @@ EOF
 install_os_deps() {
   command -v dnf > /dev/null 2>&1 || return 0
   log_info "Installing OS dependencies..."
-  dnf install -y tar gzip file findutils > /dev/null
+  dnf install -y tar gzip file findutils bash-completion > /dev/null
 }
 
 # --------------------------------------------------

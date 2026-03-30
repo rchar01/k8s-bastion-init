@@ -390,14 +390,38 @@ _bastion_print_notices() {
   fi
 }
 
+_bastion_enable_kubectl_completion() {
+  [[ -n "\${BASH_VERSION:-}" ]] || return 0
+  [[ -n "\${BASTION_KUBECTL_COMPLETION_LOADED:-}" ]] && return 0
+  export BASTION_KUBECTL_COMPLETION_LOADED=1
+
+  command -v kubectl >/dev/null 2>&1 || return 0
+
+  # bastion: kubectl completion block
+  if ! declare -F _init_completion >/dev/null 2>&1; then
+    if [[ -r /etc/profile.d/bash_completion.sh ]]; then
+      source /etc/profile.d/bash_completion.sh >/dev/null 2>&1 || true
+    elif [[ -r /usr/share/bash-completion/bash_completion ]]; then
+      source /usr/share/bash-completion/bash_completion >/dev/null 2>&1 || true
+    fi
+  fi
+
+  source <(kubectl completion bash) >/dev/null 2>&1 || true
+  # bastion: end kubectl completion block
+}
+
 case \$- in *i*)
+  _bastion_enable_kubectl_completion
+
   if [[ -n "\${SSH_CONNECTION:-}" ]] && [[ -z "\${BASTION_NOTICE_SHOWN:-}" ]]; then
     export BASTION_NOTICE_SHOWN=1
     BASTION_NOTICES=()
 
-    if [[ -z "\${BASTION_BOOTSTRAP_DONE:-}" ]] && command -v bastion-login-bootstrap >/dev/null 2>&1; then
+    if [[ -z "\${BASTION_BOOTSTRAP_DONE:-}" ]]; then
       export BASTION_BOOTSTRAP_DONE=1
-      bastion-login-bootstrap --quiet >/dev/null 2>&1 || true
+      if [[ -x /usr/local/lib/bastion/internal/bastion-login-bootstrap ]]; then
+        /usr/local/lib/bastion/internal/bastion-login-bootstrap --quiet >/dev/null 2>&1 || true
+      fi
     fi
 
     _bastion_collect_user_status
@@ -435,7 +459,7 @@ case \$- in *i*)
   fi
 esac
 
-unset -f _bastion_cert_remaining_seconds _bastion_collect_cluster_status _bastion_collect_user_status _bastion_notice_add _bastion_print_notices _bastion_regular_tools _bastion_resolve_user_kubeconfig _bastion_set_cert_state
+unset -f _bastion_cert_remaining_seconds _bastion_collect_cluster_status _bastion_collect_user_status _bastion_enable_kubectl_completion _bastion_notice_add _bastion_print_notices _bastion_regular_tools _bastion_resolve_user_kubeconfig _bastion_set_cert_state
 unset BASTION_ADMIN_GROUP BASTION_ADMIN_TOOLS BASTION_CLUSTER_STATUS_CACHE BASTION_CLUSTER_STATUS_STALE_SECONDS BASTION_HELPERS BASTION_USER_TOOLS
 EOF
 

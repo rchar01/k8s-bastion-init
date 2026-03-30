@@ -119,6 +119,52 @@ check_markers() {
   fi
 }
 
+# Check login profile completion block
+check_login_profile_completion() {
+  log_info "Checking kubectl completion block in login profile..."
+
+  if ! podman exec "$CONTAINER_NAME" test -f /etc/profile.d/bastion-login.sh; then
+    log_fail "Login profile not found"
+    return 1
+  fi
+
+  if podman exec "$CONTAINER_NAME" grep -q 'bastion: kubectl completion block' /etc/profile.d/bastion-login.sh \
+    && podman exec "$CONTAINER_NAME" grep -q 'kubectl completion bash' /etc/profile.d/bastion-login.sh; then
+    log_success "kubectl completion block is present in login profile"
+  else
+    log_fail "kubectl completion block missing in login profile"
+    return 1
+  fi
+}
+
+# Check internal user command exposure
+check_internal_command_exposure() {
+  log_info "Checking internal user command exposure..."
+
+  local hidden_commands=("bastion-login-bootstrap" "bastion-enroll-cert" "bastion-kube-state" "bastion-bootstrapd-client")
+  local internal_dir="/usr/local/lib/bastion/internal"
+  local all_ok=true
+  local cmd
+
+  for cmd in "${hidden_commands[@]}"; do
+    if podman exec "$CONTAINER_NAME" test -x "${internal_dir}/${cmd}"; then
+      log_success "Internal command present: ${internal_dir}/${cmd}"
+    else
+      log_fail "Internal command missing: ${internal_dir}/${cmd}"
+      all_ok=false
+    fi
+
+    if podman exec "$CONTAINER_NAME" test -e "/usr/local/bin/${cmd}"; then
+      log_fail "Internal command unexpectedly exposed in /usr/local/bin: ${cmd}"
+      all_ok=false
+    else
+      log_success "Internal command hidden from /usr/local/bin: ${cmd}"
+    fi
+  done
+
+  $all_ok
+}
+
 # Main
 main() {
   log_info "=== Verifying Users Setup ==="
@@ -130,6 +176,8 @@ main() {
   check_kubeconfigs || failed=1
   check_bootstrap_configs || failed=1
   check_markers || failed=1
+  check_login_profile_completion || failed=1
+  check_internal_command_exposure || failed=1
 
   log_info "=== Users Verification Complete ==="
 

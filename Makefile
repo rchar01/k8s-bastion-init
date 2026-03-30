@@ -27,7 +27,7 @@ fmt-shell-check:
 	shfmt -i 2 -ci -sr -bn -d .
 
 lint-shell:
-	bash -O globstar -c 'shellcheck -x -S warning -e SC1090,SC2034 ./*.sh ./bin/* ./sbin/* ./lib/*.sh ./tests/**/*.sh'
+	bash -O globstar -c 'shellcheck -x -S warning -e SC1090,SC2034 ./*.sh ./bin/* ./internal-bin/* ./sbin/* ./lib/*.sh ./tests/**/*.sh'
 
 check-shell: fmt-shell-check lint-shell
 

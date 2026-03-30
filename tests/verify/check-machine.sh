@@ -47,6 +47,18 @@ check_tools() {
   $all_present
 }
 
+# Check bash completion prerequisites
+check_bash_completion() {
+  log_info "Checking bash completion prerequisites..."
+
+  if podman exec "$CONTAINER_NAME" bash -c 'test -r /etc/profile.d/bash_completion.sh || test -r /usr/share/bash-completion/bash_completion'; then
+    log_success "bash-completion is available"
+  else
+    log_fail "bash-completion not found"
+    return 1
+  fi
+}
+
 # Check scripts
 check_scripts() {
   log_info "Checking bastion scripts..."
@@ -112,6 +124,7 @@ main() {
 
   check_containerd || failed=1
   check_tools || failed=1
+  check_bash_completion || failed=1
   check_scripts || failed=1
   check_csr_timers || failed=1
   check_markers || failed=1

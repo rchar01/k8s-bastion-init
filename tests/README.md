@@ -150,6 +150,7 @@ Run verification scripts from the host shell (not inside the container):
 ### Machine Phase
 - ✅ containerd installation and service startup
 - ✅ Tools installation (yq, kubectl, helm, jq)
+- ✅ `bash-completion` availability for interactive kubectl completion
 - ✅ Bastion scripts installation
 - ✅ CSR approver/cleanup systemd timers enabled and active
 - ✅ Library installation
@@ -166,6 +167,8 @@ Run verification scripts from the host shell (not inside the container):
 - ✅ User group assignments
 - ✅ Bootstrap kubeconfig generation
 - ✅ Login profile installation
+- ✅ Login profile contains kubectl completion block markers
+- ✅ Internal bootstrap helpers are hidden from `/usr/local/bin`
 - ✅ Marker file creation
 
 ### Integration

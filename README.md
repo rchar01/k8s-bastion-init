@@ -268,7 +268,6 @@ KUBECTL_URL='https://mirror.example/k8s/${KUBECTL_VERSION}/bin/linux/${ARCH}/kub
 - `sudo bastion-cluster-probe` - run one-shot cluster status cache refresh
 - `sudo bastion-bootstrap-token-issue --user <user> --reason initial-enrollment --json` - issue short-lived bootstrap kubeconfig via in-cluster issuer
 - `sudo bastion-bootstrap-token-revoke --token-id <id>` - revoke bootstrap token via in-cluster issuer
-- `bastion-login-bootstrap --quiet` - login-triggered best-effort auto-bootstrap
 - `bastion-renew-cert --quiet` - non-interactive renewal engine
 - `bastion-renew-cert` - user self-service renewal command
 - `make help` - list convenience targets for local workflows and tests
@@ -332,6 +331,7 @@ The test suite validates:
 - Root access for bootstrap and reconcile
 - Kubernetes cluster access
 - `dnf` package manager for containerd installation path used by this repository
+- `bash-completion` for interactive `kubectl` tab completion (installed by machine bootstrap on Rocky via `dnf`)
 
 ## System Changes
 
@@ -340,6 +340,7 @@ This toolkit is designed to be run as root for bootstrap and reconcile and will 
 Common changes include:
 - Installs scripts and libraries under `/usr/local/bin`, `/usr/local/sbin`, `/usr/local/lib/bastion`
 - Installs admin scripts in `/usr/local/sbin` with restricted execute permissions (`0750`)
+- Installs `bash-completion` on Rocky and enables `kubectl` Bash completion from `/etc/profile.d/bastion-login.sh`
 - Writes bastion configuration under `/etc/bastion`
 - Installs login profile under `/etc/profile.d`
 - Installs and manages `containerd` via systemd

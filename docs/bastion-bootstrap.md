@@ -352,11 +352,16 @@ CSR timer services run `kubectl` with:
 
 ### User Scripts
 
-- **`bastion-login-bootstrap`**: login-triggered best-effort auto-bootstrap orchestration
-- **`bastion-enroll-cert`**: bootstrap enrollment engine
 - **`bastion-renew-cert`**: non-interactive renewal engine
-- **`bastion-kube-state`**: machine-readable credential state classifier
 - **`bastion-kubeconfig-expiry`**: checks certificate expiry in kubeconfigs
+- **`bastion-version`**: prints installed bastion version
+
+Internal runtime helpers (not user-facing commands):
+
+- `bastion-login-bootstrap`
+- `bastion-enroll-cert`
+- `bastion-kube-state`
+- `bastion-bootstrapd-client`
 
 Auto-bootstrap and renewal behavior:
 
@@ -421,6 +426,13 @@ Notes:
 
 - The message is shown only for interactive shells over SSH
 - Users must re-login to pick up group changes, or manually source `/etc/profile.d/bastion-login.sh`
+- For interactive Bash shells, the same profile also enables `kubectl` tab completion (best effort)
+
+`kubectl` Bash completion prerequisites:
+
+- `~/.kube/config` (or `KUBECONFIG`) must be valid and cluster access must work (`kubectl get pods`)
+- `bash-completion` must be installed (`/etc/profile.d/bash_completion.sh` or `/usr/share/bash-completion/bash_completion`)
+- `kubectl` must be installed and on `PATH` (the profile runs `source <(kubectl completion bash)`)
 
 ### Cluster Status Cache
 

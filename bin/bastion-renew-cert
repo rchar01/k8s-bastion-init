@@ -43,6 +43,17 @@ USER_KEY_PATH="${KUBE_DIR}/user.key"
 USER_CONFIG_PATH="${KUBE_DIR}/config"
 QUIET=0
 
+resolve_internal_cmd() {
+  local name="$1"
+
+  if [[ -x "/usr/local/lib/bastion/internal/${name}" ]]; then
+    printf '%s\n' "/usr/local/lib/bastion/internal/${name}"
+    return 0
+  fi
+
+  return 1
+}
+
 usage() {
   cat << EOF
 Usage:
@@ -94,6 +105,10 @@ main() {
 
   parse_args "$@"
 
+  local kube_state_cmd
+  kube_state_cmd="$(resolve_internal_cmd bastion-kube-state || true)"
+  [[ -n "$kube_state_cmd" ]] || die "Missing bastion-kube-state internal command"
+
   bastion_lock_acquire 15 || {
     [[ "$QUIET" -eq 1 ]] || log_warn "Renew lock busy, skipping."
     exit 0
@@ -101,7 +116,7 @@ main() {
   trap 'bastion_lock_release' EXIT
 
   local state_json state remaining
-  state_json="$(bastion-kube-state)"
+  state_json="$("$kube_state_cmd")"
   state="$(jq -r '.status' <<< "$state_json")"
   remaining="$(jq -r '.remainingSeconds // 0' <<< "$state_json")"
 

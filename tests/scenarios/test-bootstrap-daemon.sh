@@ -48,7 +48,7 @@ test_health_api_reachable() {
   log_info "Checking daemon API is reachable and enforces caller policy..."
 
   local resp
-  if resp="$(podman exec "$CONTAINER_NAME" bash -lc 'bastion-bootstrapd-client health --socket /run/bastion-bootstrapd/bootstrapd.sock' 2> /dev/null)"; then
+  if resp="$(podman exec "$CONTAINER_NAME" bash -lc '/usr/local/lib/bastion/internal/bastion-bootstrapd-client health --socket /run/bastion-bootstrapd/bootstrapd.sock' 2> /dev/null)"; then
     local ok
     ok="$(jq -r '.ok' <<< "$resp")"
     if [[ "$ok" == "true" ]]; then

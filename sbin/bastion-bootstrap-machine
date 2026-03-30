@@ -80,6 +80,7 @@ LIB_DST="/usr/local/lib/bastion"
 BIN_DST="/usr/local/bin"
 SBIN_DST="/usr/local/sbin"
 LIBEXEC_DST="/usr/libexec"
+INTERNAL_BIN_DST="${LIB_DST}/internal"
 INSTALLED_VERSION_FILE="${LIB_DST}/VERSION"
 MACHINE_INIT_MARKER="${LIB_DST}/.machine-init-done"
 SUDOERS_PATH_FILE="/etc/sudoers.d/bastion-path"
@@ -157,6 +158,25 @@ install_tree_dir() {
   done
 
   [[ "$any" -eq 1 ]] || log_warn "No files matched in $src_dir ($pattern)"
+}
+
+install_selected_commands() {
+  local src_dir="$1" dst_dir="$2" mode="$3"
+  shift 3
+
+  install -d "$dst_dir"
+
+  local name src
+  for name in "$@"; do
+    src="${src_dir}/${name}"
+    [[ -f "$src" ]] || die "Missing command in source layout: $src"
+
+    if install_file_if_changed "$src" "${dst_dir}/${name}" "$mode"; then
+      log_info "Installed: ${dst_dir}/${name}"
+    else
+      log_debug "Unchanged: ${dst_dir}/${name}"
+    fi
+  done
 }
 
 node_artifacts_present() {
@@ -251,6 +271,7 @@ load_libs_from_source() {
 validate_source_layout() {
   [[ -d "$SOURCE_DIR/lib" ]] || die "Invalid source dir (missing lib): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/bin" ]] || die "Invalid source dir (missing bin): $SOURCE_DIR"
+  [[ -d "$SOURCE_DIR/internal-bin" ]] || die "Invalid source dir (missing internal-bin): $SOURCE_DIR"
   [[ -d "$SOURCE_DIR/sbin" ]] || die "Invalid source dir (missing sbin): $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/VERSION" ]] || die "Missing VERSION file in $SOURCE_DIR"
   [[ -f "$SOURCE_DIR/download.conf" ]] || die "Missing download.conf in $SOURCE_DIR"
@@ -266,9 +287,30 @@ install_runtime() {
     install_tree_dir "$SOURCE_DIR/lib/python" "$LIB_DST/python" "0644" "*.py"
   fi
 
-  log_info "Installing user commands to $BIN_DST"
-  install -d "$BIN_DST"
-  install_tree_dir "$SOURCE_DIR/bin" "$BIN_DST" "0755" "*"
+  local public_user_commands=(
+    bastion-renew-cert
+    bastion-kubeconfig-expiry
+    bastion-version
+  )
+  local internal_user_commands=(
+    bastion-bootstrapd-client
+    bastion-enroll-cert
+    bastion-kube-state
+    bastion-login-bootstrap
+  )
+
+  log_info "Installing public user commands to $BIN_DST"
+  install_selected_commands "$SOURCE_DIR/bin" "$BIN_DST" "0755" "${public_user_commands[@]}"
+
+  log_info "Installing internal user commands to $INTERNAL_BIN_DST"
+  install_selected_commands "$SOURCE_DIR/internal-bin" "$INTERNAL_BIN_DST" "0755" "${internal_user_commands[@]}"
+
+  log_info "Removing internal commands from $BIN_DST"
+  rm -f \
+    "${BIN_DST}/bastion-bootstrapd-client" \
+    "${BIN_DST}/bastion-enroll-cert" \
+    "${BIN_DST}/bastion-kube-state" \
+    "${BIN_DST}/bastion-login-bootstrap"
 
   log_info "Installing admin commands to $SBIN_DST"
   install -d "$SBIN_DST"
